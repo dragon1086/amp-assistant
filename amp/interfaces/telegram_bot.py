@@ -40,14 +40,49 @@ from amp.plugins.registry import _registry as plugin_registry
 logger = logging.getLogger(__name__)
 
 
-def _escape_md(text: str) -> str:
-    """Escape special characters for Telegram MarkdownV2."""
-    special = '_*[]()~`>#+-=|{}.!'
-    return ''.join(f'\\{c}' if c in special else c for c in str(text))
+def _html_e(text: str) -> str:
+    """Escape HTML special characters for Telegram HTML parse mode."""
+    return str(text).replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;")
+
+
+import re
+
+def _md_to_html(text: str) -> str:
+    """Convert LLM markdown output to Telegram HTML.
+
+    Handles the most common cases AI models produce:
+      **bold** / __bold__  →  <b>bold</b>
+      *italic* / _italic_  →  <i>italic</i>
+      `code`               →  <code>code</code>
+      ```lang\n...\n```    →  <pre>...</pre>
+      ### heading          →  <b>heading</b>
+    """
+    # First escape HTML special chars
+    text = _html_e(text)
+
+    # Code blocks (before inline code to avoid double-processing)
+    text = re.sub(r'```[a-zA-Z]*\n(.*?)```', lambda m: f'<pre>{m.group(1)}</pre>', text, flags=re.DOTALL)
+    text = re.sub(r'```(.*?)```', lambda m: f'<pre>{m.group(1)}</pre>', text, flags=re.DOTALL)
+
+    # Inline code
+    text = re.sub(r'`([^`\n]+)`', lambda m: f'<code>{m.group(1)}</code>', text)
+
+    # Bold: **text** or __text__
+    text = re.sub(r'\*\*(.+?)\*\*', lambda m: f'<b>{m.group(1)}</b>', text, flags=re.DOTALL)
+    text = re.sub(r'__(.+?)__', lambda m: f'<b>{m.group(1)}</b>', text, flags=re.DOTALL)
+
+    # Italic: *text* or _text_ (single, not double)
+    text = re.sub(r'\*([^\*\n]+)\*', lambda m: f'<i>{m.group(1)}</i>', text)
+    text = re.sub(r'(?<![_\w])_([^_\n]+)_(?![_\w])', lambda m: f'<i>{m.group(1)}</i>', text)
+
+    # Headings: ### / ## / #
+    text = re.sub(r'^#{1,6}\s+(.+)$', lambda m: f'<b>{m.group(1)}</b>', text, flags=re.MULTILINE)
+
+    return text
 
 
 def _build_emergent_message(result: dict) -> str:
-    """Format emergent result for Telegram MarkdownV2.
+    """Format emergent result for Telegram HTML parse mode.
 
     Layout (모바일 최적화):
       헤더 + 페르소나 한 줄
@@ -65,37 +100,37 @@ def _build_emergent_message(result: dict) -> str:
     def _short(p: str) -> str:
         return p.split("—")[0].split("–")[0].split("-")[0].strip()[:24]
 
-    lines = ["🤔 *emergent mode*"]
+    lines = ["🤔 <b>emergent mode</b>"]
     lines.append(
-        f"_🎭 {_escape_md(_short(persona_a))} vs {_escape_md(_short(persona_b))}"
-        f" \\| 도메인: {_escape_md(persona_domain)}"
-        f" \\| 다양성: {_escape_md(str(round(persona_diversity, 2)))}_"
+        f"<i>🎭 {_html_e(_short(persona_a))} vs {_html_e(_short(persona_b))}"
+        f" | 도메인: {_html_e(persona_domain)}"
+        f" | 다양성: {round(persona_diversity, 2)}</i>"
     )
     lines.append("")
     lines.append("━" * 20)
     lines.append("")
 
     # 결론 (핵심 — 전체 표시)
-    lines.append("*✅ 결론:*")
-    lines.append(_escape_md(result["answer"]))
+    lines.append("<b>✅ 결론:</b>")
+    lines.append(_md_to_html(result["answer"]))
     lines.append("")
 
     # CSER
     cser_display = format_cser(result["cser"], result["confidence"])
-    lines.append(f"📊 {_escape_md(cser_display)}")
+    lines.append(f"📊 {_html_e(cser_display)}")
 
     # 합의 / 이견 (간결하게)
     if result.get("agreements"):
         lines.append("")
-        lines.append("*🤝 합의:*")
+        lines.append("<b>🤝 합의:</b>")
         for a in result["agreements"][:2]:
-            lines.append(f"• {_escape_md(a)}")
+            lines.append(f"• {_html_e(a)}")
 
     if result.get("conflicts"):
         lines.append("")
-        lines.append("*⚡ 이견:*")
+        lines.append("<b>⚡ 이견:</b>")
         for c in result["conflicts"][:2]:
-            lines.append(f"• {_escape_md(c)}")
+            lines.append(f"• {_html_e(c)}")
 
     lines.append("")
     lines.append("━" * 20)
@@ -104,7 +139,7 @@ def _build_emergent_message(result: dict) -> str:
     if result.get("insights"):
         ins = result["insights"]
         if ins.get("trust_reason"):
-            lines.append(f"💡 _{_escape_md(ins['trust_reason'])}_")
+            lines.append(f"💡 <i>{_html_e(ins['trust_reason'])}</i>")
 
     return "\n".join(lines)
 
@@ -134,19 +169,19 @@ class AmpBot:
 
     async def cmd_start(self, update: Update, ctx: ContextTypes.DEFAULT_TYPE):
         await update.message.reply_text(
-            "👋 *amp에 오신 것을 환영합니다\\!*\n\n"
-            "Two minds\\. One answer\\.\n\n"
+            "👋 <b>amp에 오신 것을 환영합니다!</b>\n\n"
+            "Two minds. One answer.\n\n"
             "저는 두 AI 에이전트가 독립적으로 분석하고 화해하는 방식으로 동작하는 "
-            "로컬 개인 비서입니다\\.\n\n"
-            "*명령어:*\n"
-            "/mode \\- 현재 모드 확인/변경\n"
-            "/model \\- LLM 모델 확인/변경\n"
-            "/plugins \\- 플러그인 목록\n"
-            "/imagine \\- 이미지 생성\n"
-            "/stats \\- 지식 그래프 통계\n"
-            "/clear \\- 대화 기록 초기화\n\n"
-            "질문이나 도움이 필요한 것을 그냥 입력하세요\\!",
-            parse_mode="MarkdownV2",
+            "로컬 개인 비서입니다.\n\n"
+            "<b>명령어:</b>\n"
+            "/mode - 현재 모드 확인/변경\n"
+            "/model - LLM 모델 확인/변경\n"
+            "/plugins - 플러그인 목록\n"
+            "/imagine - 이미지 생성\n"
+            "/stats - 지식 그래프 통계\n"
+            "/clear - 대화 기록 초기화\n\n"
+            "질문이나 도움이 필요한 것을 그냥 입력하세요!",
+            parse_mode="HTML",
         )
 
     async def cmd_mode(self, update: Update, ctx: ContextTypes.DEFAULT_TYPE):
@@ -155,26 +190,26 @@ class AmpBot:
 
         if args and args[0] in ("auto", "solo", "pipeline", "emergent"):
             self._modes[user_id] = args[0]
-            await update.message.reply_text(f"✅ 모드 변경: *{args[0]}*", parse_mode="Markdown")
+            await update.message.reply_text(f"✅ 모드 변경: <b>{args[0]}</b>", parse_mode="HTML")
         else:
             current = self._get_mode(user_id)
             await update.message.reply_text(
-                f"현재 모드: *{current}*\n\n"
+                f"현재 모드: <b>{current}</b>\n\n"
                 "변경하려면:\n"
-                "`/mode auto` — 자동 감지\n"
-                "`/mode solo` — 단일 응답\n"
-                "`/mode pipeline` — 계획→해결→검토→수정\n"
-                "`/mode emergent` — 2-에이전트 분석",
-                parse_mode="Markdown",
+                "<code>/mode auto</code> — 자동 감지\n"
+                "<code>/mode solo</code> — 단일 응답\n"
+                "<code>/mode pipeline</code> — 계획→해결→검토→수정\n"
+                "<code>/mode emergent</code> — 2-에이전트 분석",
+                parse_mode="HTML",
             )
 
     async def cmd_stats(self, update: Update, ctx: ContextTypes.DEFAULT_TYPE):
         stats = self.kg.stats()
         await update.message.reply_text(
-            f"📊 *amp 통계*\n\n"
+            f"📊 <b>amp 통계</b>\n\n"
             f"🧠 KG: {stats['nodes']} nodes, {stats['edges']} edges\n"
-            f"💾 DB: `{stats['db_path']}`",
-            parse_mode="Markdown",
+            f"💾 DB: <code>{_html_e(str(stats['db_path']))}</code>",
+            parse_mode="HTML",
         )
 
     async def cmd_clear(self, update: Update, ctx: ContextTypes.DEFAULT_TYPE):
@@ -202,13 +237,13 @@ class AmpBot:
             agent_a = user_config.get("agent_a", {})
             agent_b = user_config.get("agent_b", {})
             await update.message.reply_text(
-                "*현재 모델 설정:*\n\n"
-                f"Agent A: `{agent_a.get('provider', 'openai')}` / `{agent_a.get('model', 'gpt-4o')}`\n"
-                f"Agent B: `{agent_b.get('provider', 'anthropic_oauth')}` / `{agent_b.get('model', 'claude-sonnet-4-6')}`\n\n"
+                "<b>현재 모델 설정:</b>\n\n"
+                f"Agent A: <code>{_html_e(agent_a.get('provider', 'openai'))}</code> / <code>{_html_e(agent_a.get('model', 'gpt-4o'))}</code>\n"
+                f"Agent B: <code>{_html_e(agent_b.get('provider', 'anthropic_oauth'))}</code> / <code>{_html_e(agent_b.get('model', 'claude-sonnet-4-6'))}</code>\n\n"
                 "변경:\n"
-                "`/model a gpt-4o`\n"
-                "`/model b claude-sonnet-4-6`",
-                parse_mode="Markdown",
+                "<code>/model a gpt-4o</code>\n"
+                "<code>/model b claude-sonnet-4-6</code>",
+                parse_mode="HTML",
             )
             return
 
@@ -218,13 +253,13 @@ class AmpBot:
             user_config[agent_key]["model"] = model
             self.user_config_store.set(user_id, user_config)
             await update.message.reply_text(
-                f"✅ Agent {args[0].upper()} 모델 변경: `{model}`",
-                parse_mode="Markdown",
+                f"✅ Agent {args[0].upper()} 모델 변경: <code>{_html_e(model)}</code>",
+                parse_mode="HTML",
             )
         else:
             await update.message.reply_text(
-                "사용법: `/model` (현재 설정) 또는 `/model a gpt-4o`",
-                parse_mode="Markdown",
+                "사용법: <code>/model</code> (현재 설정) 또는 <code>/model a gpt-4o</code>",
+                parse_mode="HTML",
             )
 
     # ------------------------------------------------------------------ #
@@ -241,14 +276,14 @@ class AmpBot:
             await update.message.reply_text("등록된 플러그인이 없습니다.")
             return
 
-        lines = ["*🔌 플러그인 목록:*\n"]
+        lines = ["<b>🔌 플러그인 목록:</b>\n"]
         for p in plugins:
             enabled = user_config.get("plugins", {}).get(p.name, p.enabled_by_default)
             status = "✅" if enabled else "❌"
-            lines.append(f"{status} `{p.name}` — {p.description}")
+            lines.append(f"{status} <code>{_html_e(p.name)}</code> — {_html_e(p.description)}")
 
-        lines.append("\n토글: `/plugin on image_vision` 또는 `/plugin off image_vision`")
-        await update.message.reply_text("\n".join(lines), parse_mode="Markdown")
+        lines.append("\n토글: <code>/plugin on image_vision</code> 또는 <code>/plugin off image_vision</code>")
+        await update.message.reply_text("\n".join(lines), parse_mode="HTML")
 
     async def cmd_plugin(self, update: Update, ctx: ContextTypes.DEFAULT_TYPE):
         """Enable or disable a plugin for this user.
@@ -262,8 +297,8 @@ class AmpBot:
 
         if len(args) < 2 or args[0] not in ("on", "off"):
             await update.message.reply_text(
-                "사용법: `/plugin on <이름>` 또는 `/plugin off <이름>`",
-                parse_mode="Markdown",
+                "사용법: <code>/plugin on &lt;이름&gt;</code> 또는 <code>/plugin off &lt;이름&gt;</code>",
+                parse_mode="HTML",
             )
             return
 
@@ -271,8 +306,8 @@ class AmpBot:
         plugin = self.plugin_registry.get(name)
         if not plugin:
             await update.message.reply_text(
-                f"❌ 플러그인 `{name}`을 찾을 수 없습니다.",
-                parse_mode="Markdown",
+                f"❌ 플러그인 <code>{_html_e(name)}</code>을 찾을 수 없습니다.",
+                parse_mode="HTML",
             )
             return
 
@@ -283,8 +318,8 @@ class AmpBot:
 
         status_text = "활성화" if enabled else "비활성화"
         await update.message.reply_text(
-            f"✅ `{name}` 플러그인 {status_text}됨",
-            parse_mode="Markdown",
+            f"✅ <code>{_html_e(name)}</code> 플러그인 {status_text}됨",
+            parse_mode="HTML",
         )
 
     # ------------------------------------------------------------------ #
@@ -304,8 +339,8 @@ class AmpBot:
         if not user_config.get("plugins", {}).get("image_gen", plugin.enabled_by_default):
             await update.message.reply_text(
                 "❌ 이미지 생성 플러그인이 비활성화되어 있습니다. "
-                "`/plugin on image_gen`으로 활성화하세요.",
-                parse_mode="Markdown",
+                "<code>/plugin on image_gen</code>으로 활성화하세요.",
+                parse_mode="HTML",
             )
             return
 
@@ -380,48 +415,50 @@ class AmpBot:
             # --- 실시간 진행 상황 메시지 (emergent 모드만) ---
             status_msg = None
             if effective_mode == "emergent":
-                status_msg = await update.message.reply_text("⏳ 분석 시작 중\\.\\.\\.", parse_mode="MarkdownV2")
+                status_msg = await update.message.reply_text("⏳ 분석 시작 중...", parse_mode="HTML")
                 loop = asyncio.get_event_loop()
 
                 def on_progress(stage: str, data: dict):
+                    pa = _html_e(data.get('persona_a', data.get('persona', 'Agent A')))
+                    pb = _html_e(data.get('persona_b', data.get('persona', 'Agent B')))
                     stage_texts = {
                         "persona_selected": (
-                            f"🎭 *페르소나 선택 완료*\n"
-                            f"🔵 A: {data.get('persona_a','Agent A')}\n"
-                            f"🔴 B: {data.get('persona_b','Agent B')}\n\n"
-                            f"⏳ 두 전문가 분석 중\\.\\.\\."
+                            f"🎭 <b>페르소나 선택 완료</b>\n"
+                            f"🔵 A: {pa}\n"
+                            f"🔴 B: {pb}\n\n"
+                            f"⏳ 두 전문가 분석 중..."
                         ),
                         "agent_a_start": (
-                            f"🔵 *{data.get('persona','Agent A')}* 분석 중\\.\\.\\.\n"
+                            f"🔵 <b>{pa}</b> 분석 중...\n"
                             f"🔴 Agent B 대기 중"
                         ),
                         "agent_a_done": (
-                            f"🔵 *{data.get('persona','Agent A')}* ✅\n"
-                            f"🔴 Agent B 분석 중\\.\\.\\."
+                            f"🔵 <b>{pa}</b> ✅\n"
+                            f"🔴 Agent B 분석 중..."
                         ),
                         "agent_b_start": (
                             f"🔵 Agent A ✅\n"
-                            f"🔴 *{data.get('persona','Agent B')}* 분석 중\\.\\.\\."
+                            f"🔴 <b>{pb}</b> 분석 중..."
                         ),
                         "agent_b_done": (
                             f"🔵 Agent A ✅\n"
-                            f"🔴 *{data.get('persona','Agent B')}* ✅\n\n"
-                            f"🟡 두 관점 합성 중\\.\\.\\."
+                            f"🔴 <b>{pb}</b> ✅\n\n"
+                            f"🟡 두 관점 합성 중..."
                         ),
                         "reconciling": (
                             f"🔵 Agent A ✅  🔴 Agent B ✅\n\n"
-                            f"🟡 합성 중\\.\\.\\. \\(CSER: {data.get('cser',0):.2f}\\)"
+                            f"🟡 합성 중... (CSER: {data.get('cser',0):.2f})"
                         ),
                         "verifying": (
                             f"🔵 Agent A ✅  🔴 Agent B ✅  🟡 합성 ✅\n\n"
-                            f"✅ 최종 검증 중\\.\\.\\."
+                            f"✅ 최종 검증 중..."
                         ),
                     }
                     text = stage_texts.get(stage)
                     if text and status_msg:
                         async def _edit():
                             try:
-                                await status_msg.edit_text(text, parse_mode="MarkdownV2")
+                                await status_msg.edit_text(text, parse_mode="HTML")
                             except Exception:
                                 pass
                         asyncio.run_coroutine_threadsafe(_edit(), loop)
@@ -430,30 +467,30 @@ class AmpBot:
                     emergent.run, query, context, run_config, on_progress
                 )
             elif effective_mode == "solo":
-                status_msg = await update.message.reply_text("⏳ 분석 중\\.\\.\\.", parse_mode="MarkdownV2")
+                status_msg = await update.message.reply_text("⏳ 분석 중...", parse_mode="HTML")
                 result = await asyncio.to_thread(solo.run, query, context, run_config)
             else:
                 # pipeline: plan→solve→review→fix 4단계
                 status_msg = await update.message.reply_text(
-                    "⏳ *분석 시작 중\\.\\.\\.*\n📋 1\\. 계획 수립 중",
-                    parse_mode="MarkdownV2"
+                    "⏳ <b>분석 시작 중...</b>\n📋 1. 계획 수립 중",
+                    parse_mode="HTML"
                 )
                 loop = asyncio.get_event_loop()
                 step = [0]
 
                 async def _update_pipeline_status():
                     steps = [
-                        "⏳ *분석 시작 중\\.\\.\\.*\n📋 1\\. 계획 수립 중",
-                        "📋 계획 ✅\n🔧 2\\. 해결 중\\.\\.\\.",
-                        "🔧 해결 ✅\n🔍 3\\. 검토 중\\.\\.\\.",
-                        "🔍 검토 ✅\n✨ 4\\. 최종 수정 중\\.\\.\\.",
+                        "⏳ <b>분석 시작 중...</b>\n📋 1. 계획 수립 중",
+                        "📋 계획 ✅\n🔧 2. 해결 중...",
+                        "🔧 해결 ✅\n🔍 3. 검토 중...",
+                        "🔍 검토 ✅\n✨ 4. 최종 수정 중...",
                     ]
                     for i in range(1, len(steps)):
                         await asyncio.sleep(8)
                         if status_msg and step[0] < i:
                             step[0] = i
                             try:
-                                await status_msg.edit_text(steps[i], parse_mode="MarkdownV2")
+                                await status_msg.edit_text(steps[i], parse_mode="HTML")
                             except Exception:
                                 pass
 
@@ -471,8 +508,8 @@ class AmpBot:
                 }.get(effective_mode, "분석")
                 try:
                     await status_msg.edit_text(
-                        f"✅ *{mode_label} 완료*",
-                        parse_mode="MarkdownV2"
+                        f"✅ <b>{_html_e(mode_label)} 완료</b>",
+                        parse_mode="HTML"
                     )
                 except Exception:
                     pass
@@ -498,15 +535,15 @@ class AmpBot:
                     ]]
                     reply_markup = InlineKeyboardMarkup(keyboard)
                 try:
-                    await update.message.reply_text(reply, parse_mode="MarkdownV2", reply_markup=reply_markup)
+                    await update.message.reply_text(reply, parse_mode="HTML", reply_markup=reply_markup)
                 except Exception:
                     # Fallback without markdown if parsing fails
                     await update.message.reply_text(result["answer"], reply_markup=reply_markup)
             else:
                 label = "pipeline" if effective_mode == "pipeline" else "solo"
-                reply = f"*amp ({label}):*\n\n{result['answer']}"
+                reply = f"<b>amp ({label}):</b>\n\n{_md_to_html(result['answer'])}"
                 try:
-                    await update.message.reply_text(reply, parse_mode="Markdown")
+                    await update.message.reply_text(reply, parse_mode="HTML")
                 except Exception:
                     await update.message.reply_text(result["answer"])
 
@@ -545,7 +582,7 @@ class AmpBot:
         try:
             self.kg.relate(node_id, node_id, f"user_feedback_{rating}", weight)
             await query.edit_message_reply_markup(reply_markup=None)
-            await query.message.reply_text("피드백 저장됐어\\! KG에 반영됐어 🧠", parse_mode="MarkdownV2")
+            await query.message.reply_text("피드백 저장됐어! KG에 반영됐어 🧠", parse_mode="HTML")
         except Exception as e:
             logger.error(f"Feedback save failed: {e}", exc_info=True)
             await query.message.reply_text("피드백 저장 실패 😅")
