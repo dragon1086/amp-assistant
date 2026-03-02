@@ -2,17 +2,13 @@
 # Copy this to ~/.amp/config.yaml and fill in your values
 # Environment variables override these settings
 
-llm:
-  # Provider: openai (default) | anthropic
-  provider: openai
-
-  # Model options:
-  #   openai:    gpt-4o-mini (default, cheap+fast), gpt-4o, gpt-4.1
-  #   anthropic: claude-haiku-4-5-20251001 (fast), claude-sonnet-4-6
-  model: gpt-4o-mini
-
-  # API key - can also be set via OPENAI_API_KEY or ANTHROPIC_API_KEY env var
-  api_key: ${OPENAI_API_KEY}
+agents:
+  agent_a:
+    provider: openai
+    model: gpt-5.2
+  agent_b:
+    provider: anthropic
+    model: claude-sonnet-4-6
 
 telegram:
   # Telegram bot token from @BotFather
