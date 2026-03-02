@@ -11,6 +11,8 @@ This independence is what creates emergence.
 import os
 import subprocess
 
+from amp.core.auto_persona import generate_personas
+from amp.core.kg import KnowledgeGraph
 from amp.core.metrics import calculate_cser
 
 
@@ -68,17 +70,19 @@ def run(query: str, context: list[dict], config: dict) -> dict:
             f"{m['role'].upper()}: {m['content'][:300]}" for m in recent
         )
 
+    # Auto-persona: pull KG context and generate optimal contrasting personas
+    kg = KnowledgeGraph()
+    kg_nodes = kg.search(query, top_k=3)
+    kg_context = [node["content"] for node in kg_nodes]
+    personas = generate_personas(query, kg_context)
+
     agent_a_system = (
-        "You are an analytical expert (Agent A). Your role is to propose a thorough, "
-        "well-structured answer. Focus on identifying key insights, opportunities, "
-        "and constructive recommendations. Think from first principles. "
+        f"당신은 {personas['persona_a']}입니다. 독립적으로 분석하세요. "
         "Answer in the same language as the user's question."
     )
 
     agent_b_system = (
-        "You are a critical expert (Agent B). Your role is to independently analyze "
-        "the question from a skeptical, adversarial perspective. Identify risks, "
-        "flaws, edge cases, and potential problems. Challenge assumptions. "
+        f"당신은 {personas['persona_b']}입니다. 독립적으로 분석하세요. "
         "Answer in the same language as the user's question."
     )
 
@@ -156,6 +160,11 @@ Answer in the same language as the original question."""
         "confidence": cser_data["confidence"],
         "agreements": agreements,
         "conflicts": conflicts,
+        "persona_a": personas["persona_a"],
+        "persona_b": personas["persona_b"],
+        "persona_domain": personas["domain"],
+        "persona_diversity": personas["diversity_score"],
+        "persona_source": personas["source"],
     }
 
 

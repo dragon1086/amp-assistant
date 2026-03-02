@@ -63,10 +63,17 @@ def _print_emergent_result(result: dict):
 
     console.print("\n[bold yellow]🤔 분석 중... (emergent mode)[/bold yellow]\n")
 
+    # Persona header
+    persona_a = result.get("persona_a", "분석적 전문가")
+    persona_b = result.get("persona_b", "공감적 조언자")
+    diversity = result.get("persona_diversity", "")
+    diversity_str = f" · 다양성 {diversity}" if diversity else ""
+    console.print(f"[dim]페르소나 도메인: {result.get('persona_domain', 'default')}{diversity_str}[/dim]\n")
+
     # Agent A
     console.print(Panel(
         result["agent_a"],
-        title="[cyan]Agent A — Analyst[/cyan]",
+        title=f"[cyan]Agent A — {persona_a}[/cyan]",
         border_style="cyan",
         expand=False,
     ))
@@ -74,7 +81,7 @@ def _print_emergent_result(result: dict):
     # Agent B
     console.print(Panel(
         result["agent_b"],
-        title="[magenta]Agent B — Critic[/magenta]",
+        title=f"[magenta]Agent B — {persona_b}[/magenta]",
         border_style="magenta",
         expand=False,
     ))
