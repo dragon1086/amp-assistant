@@ -47,77 +47,64 @@ def _escape_md(text: str) -> str:
 
 
 def _build_emergent_message(result: dict) -> str:
-    """Format emergent result for Telegram MarkdownV2."""
-    lines = ["🤔 *emergent mode*\n"]
+    """Format emergent result for Telegram MarkdownV2.
 
-    # Auto-generated personas
+    Layout (모바일 최적화):
+      헤더 + 페르소나 한 줄
+      ━━━
+      ✅ 결론 (full)
+      ━━━
+      📊 CSER + 합의/이견 요약
+    """
     persona_a = result.get("persona_a", "Agent A")
     persona_b = result.get("persona_b", "Agent B")
     persona_domain = result.get("persona_domain", "default")
-    persona_source = result.get("persona_source", "preset")
     persona_diversity = result.get("persona_diversity", 0.0)
 
-    lines.append("*🎭 생성된 페르소나:*")
-    lines.append(f"  A: {_escape_md(persona_a)}")
-    lines.append(f"  B: {_escape_md(persona_b)}")
+    # 페르소나 이름 짧게 (첫 구분자 앞까지)
+    def _short(p: str) -> str:
+        return p.split("—")[0].split("–")[0].split("-")[0].strip()[:24]
+
+    lines = ["🤔 *emergent mode*"]
     lines.append(
-        f"  _도메인: {_escape_md(persona_domain)} \\| "
-        f"소스: {_escape_md(persona_source)} \\| "
-        f"다양성: {_escape_md(str(round(persona_diversity, 2)))}_"
+        f"_🎭 {_escape_md(_short(persona_a))} vs {_escape_md(_short(persona_b))}"
+        f" \\| 도메인: {_escape_md(persona_domain)}"
+        f" \\| 다양성: {_escape_md(str(round(persona_diversity, 2)))}_"
     )
     lines.append("")
-
-    lines.append(f"*\\[Agent A — {_escape_md(persona_a[:30])}\\]*")
-    a_text = result["agent_a"]
-    lines.append(_escape_md(a_text[:600]) + ("\\.\\.\\." if len(a_text) > 600 else ""))
-    lines.append("")
-
-    lines.append(f"*\\[Agent B — {_escape_md(persona_b[:30])}\\]*")
-    b_text = result["agent_b"]
-    lines.append(_escape_md(b_text[:600]) + ("\\.\\.\\." if len(b_text) > 600 else ""))
-    lines.append("")
-
     lines.append("━" * 20)
+    lines.append("")
 
-    if result.get("agreements"):
-        lines.append("*✓ 합의:*")
-        for a in result["agreements"][:2]:
-            lines.append(f"• {_escape_md(a)}")
-        lines.append("")
-
-    if result.get("conflicts"):
-        lines.append("*⚡ 이견:*")
-        for c in result["conflicts"][:2]:
-            lines.append(f"• {_escape_md(c)}")
-        lines.append("")
-
+    # 결론 (핵심 — 전체 표시)
     lines.append("*✅ 결론:*")
     lines.append(_escape_md(result["answer"]))
     lines.append("")
 
+    # CSER
     cser_display = format_cser(result["cser"], result["confidence"])
     lines.append(f"📊 {_escape_md(cser_display)}")
+
+    # 합의 / 이견 (간결하게)
+    if result.get("agreements"):
+        lines.append("")
+        lines.append("*🤝 합의:*")
+        for a in result["agreements"][:2]:
+            lines.append(f"• {_escape_md(a)}")
+
+    if result.get("conflicts"):
+        lines.append("")
+        lines.append("*⚡ 이견:*")
+        for c in result["conflicts"][:2]:
+            lines.append(f"• {_escape_md(c)}")
+
+    lines.append("")
     lines.append("━" * 20)
 
-    # Insight section
+    # Insights (있을 때만, trust_reason 우선)
     if result.get("insights"):
         ins = result["insights"]
-        lines.append("")
-        lines.append("📊 *독창성 & 신뢰도*")
-        if ins.get("agreements"):
-            lines.append("🤝 *두 AI 합의:*")
-            for a in ins["agreements"][:2]:
-                lines.append(f"  • {_escape_md(a)}")
-        if ins.get("gpt_only"):
-            lines.append("🔵 *GPT만 발견:*")
-            for a in ins["gpt_only"][:1]:
-                lines.append(f"  • {_escape_md(a)}")
-        if ins.get("claude_only"):
-            lines.append("🟠 *Claude만 발견:*")
-            for a in ins["claude_only"][:1]:
-                lines.append(f"  • {_escape_md(a)}")
         if ins.get("trust_reason"):
-            lines.append(f"\n💡 _{_escape_md(ins['trust_reason'])}_")
+            lines.append(f"💡 _{_escape_md(ins['trust_reason'])}_")
 
     return "\n".join(lines)
 
