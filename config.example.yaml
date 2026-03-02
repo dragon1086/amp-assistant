@@ -30,3 +30,24 @@ amp:
 
   # Local knowledge graph storage path (SQLite)
   kg_path: ~/.amp/kg.db
+
+plugins:
+  # image_vision: analyze photos sent to the bot (GPT-4o Vision)
+  image_vision:
+    provider: openai  # only openai supported for now
+
+  # image_gen: generate images with /imagine <prompt>
+  image_gen:
+    backend: dalle3   # dalle3 | local | replicate
+    local_url: http://localhost:7860  # for Automatic1111 or ComfyUI
+
+mcp:
+  # MCP (Model Context Protocol) server connections
+  # Each entry requires: name and url
+  servers: []
+  # Example:
+  # servers:
+  #   - name: filesystem
+  #     url: http://localhost:3001
+  #   - name: brave-search
+  #     url: http://localhost:3002
