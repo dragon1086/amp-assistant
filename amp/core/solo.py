@@ -1,10 +1,11 @@
 """Solo mode - single LLM call for simple queries."""
 
-from amp.core.emergent import _call_claude
+from amp.core.llm_factory import call_llm
+from amp.core.emergent import _get_agent_cfg
 
 
 def run(query: str, context: list[dict], config: dict) -> dict:
-    """Execute a single LLM call via Claude OAuth.
+    """Execute a single LLM call using the configured provider.
 
     Args:
         query: User's question or request
@@ -28,11 +29,19 @@ def run(query: str, context: list[dict], config: dict) -> dict:
             f"{m['role'].upper()}: {m['content'][:200]}" for m in recent
         )
 
-    answer = _call_claude(f"{ctx_summary}\n\nUser: {query}" if ctx_summary else query, system=system)
+    prompt = f"{ctx_summary}\n\nUser: {query}" if ctx_summary else query
+
+    # config에서 provider/model 읽기 (agent_a 기준, fallback: openai)
+    try:
+        provider, model = _get_agent_cfg(config, "agent_a")
+    except Exception:
+        provider, model = "openai", "gpt-4o-mini"
+
+    answer = call_llm(prompt, system=system, provider=provider, model=model)
 
     return {
         "answer": answer,
         "mode": "solo",
-        "model": "claude-oauth",
+        "model": f"{provider}/{model}",
         "confidence": None,
     }
