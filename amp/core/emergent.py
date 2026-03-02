@@ -76,14 +76,22 @@ def run(query: str, context: list[dict], config: dict) -> dict:
     kg_context = [node["content"] for node in kg_nodes]
     personas = generate_personas(query, kg_context)
 
+    kg_context_str = ""
+    if kg_nodes:
+        kg_context_str = "\n\nRelevant knowledge:\n" + "\n".join(
+            f"- {node['content']}" for node in kg_nodes
+        )
+
     agent_a_system = (
         f"당신은 {personas['persona_a']}입니다. 독립적으로 분석하세요. "
         "Answer in the same language as the user's question."
+        + kg_context_str
     )
 
     agent_b_system = (
         f"당신은 {personas['persona_b']}입니다. 독립적으로 분석하세요. "
         "Answer in the same language as the user's question."
+        + kg_context_str
     )
 
     agent_a_prompt = f"Analyze this question and provide your expert assessment:{ctx_summary}\n\nQuestion: {query}"
@@ -150,6 +158,9 @@ Answer in the same language as the original question."""
 
     # Extract final answer
     final_answer = _extract_verified(verified_raw, synthesized)
+
+    # Persist synthesized answer to KG for future context
+    kg.add(content=final_answer, tags=["emergent", "reconciled"])
 
     return {
         "answer": final_answer,
