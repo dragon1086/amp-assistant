@@ -9,6 +9,36 @@ import os
 
 from openai import OpenAI
 
+# ─── 같은 벤더 전용: 극단적 관점 대비 팩 ───────────────────────────────────
+# 같은 모델 계열은 기본 priors를 공유하므로 역할을 매우 강하게 분리해야 CSER 확보 가능.
+# temp_a(낮음) = 정밀/보수, temp_b(높음) = 창의/도전적
+SAME_VENDOR_PRESETS: dict[str, tuple[str, str]] = {
+    "career":       ("커리어 최적화 전략가 — 데이터 기반, 현실 우선, 위험 최소화",
+                     "파괴적 혁신 코치 — 현상 타파, 비선형 도약, 편안함을 거부"),
+    "relationship": ("인지행동 치료사 — 패턴 분석, 명확한 경계, 감정적 거리",
+                     "깊은 연결 추구자 — 취약성 수용, 감정적 몰입, 무조건적 이해"),
+    "business":     ("리스크 관리 CFO — 현금흐름, 생존가능성, 보수적 성장",
+                     "비전형 창업가 — 시장 파괴, 10배 성장, 실패를 학습으로"),
+    "investment":   ("퀀트 리스크 애널리스트 — 하방 보호, 포트폴리오 헤징, 통계 근거",
+                     "모멘텀 성장 투자자 — 비대칭 수익, 집중 배팅, 추세 추종"),
+    "legal_contract":("독소조항 사냥꾼 — 최악 시나리오, 모든 허점 탐지, 절대 서명 거부",
+                      "딜 클로저 — 비즈니스 기회 우선, 실용적 타협, 관계 자산 보호"),
+    "health":       ("예방의학 전문가 — 증거 기반, 최악 가능성 우선 고려, 조기 개입",
+                     "통합 웰빙 코치 — 전체론적 접근, 삶의 질 우선, 자연 치유"),
+    "ethics":       ("의무론적 윤리학자 — 원칙 불변, 결과 무관, 절대적 도덕 규범",
+                     "공리주의 실용주의자 — 최대 다수 이익, 결과 중심, 맥락 유연"),
+    "creative":     ("시스템 설계자 — 실행 가능성, 제약 조건 내 최적화, 재현성",
+                     "제약 없는 몽상가 — 불가능을 전제 무시, 형식 파괴, 순수 창의"),
+    "parenting":    ("발달심리학 전문가 — 연구 기반, 장기 심리 영향, 안전 우선",
+                     "자유 양육 철학자 — 자율성 극대화, 실수를 통한 성장, 아이 주도"),
+    "default":      ("정밀 분석가 — 논리, 증거, 측정 가능한 결론만",
+                     "직관적 통합자 — 맥락, 감정, 시스템 전체 패턴"),
+}
+
+# 같은 벤더 감지 시 사용할 temperature 쌍
+SAME_VENDOR_TEMPS = (0.3, 1.1)   # (agent_a: 정밀, agent_b: 창의/도전)
+
+# ─── 교차 벤더 기본 프리셋 ───────────────────────────────────────────────────
 # Domain preset pool (covers 95% of queries without extra LLM call)
 PERSONA_PRESETS = {
     "career": ("커리어 성장 코치 (기회와 가능성 중심)", "재무 안정 분석가 (리스크와 현실 중심)"),
@@ -60,27 +90,51 @@ def validate_persona_diversity(persona_a: str, persona_b: str, client: OpenAI) -
         return 0.5  # fallback: assume OK
 
 
-def generate_personas(query: str, kg_context: list = None) -> dict:
+def generate_personas(query: str, kg_context: list = None, same_vendor: bool = False) -> dict:
     """
     Main entry point. Returns optimal contrasting personas for a query.
-    Uses presets when possible (fast, free), dynamic generation as fallback.
+
+    Args:
+        query:       User question
+        kg_context:  KG search results for extra context
+        same_vendor: True일 때 같은 벤더 전용 극단 대비 팩 사용.
+                     temperature 쌍(SAME_VENDOR_TEMPS)도 함께 반환함.
+
+    Returns:
+        dict with persona_a, persona_b, diversity_score, source,
+        and (same_vendor=True일 때) temp_a, temp_b
     """
-    client = OpenAI(api_key=os.environ.get("OPENAI_API_KEY", ""))
     kg_context = kg_context or []
-
-    # 1. Try preset match
     domain = detect_domain(query)
-    persona_a, persona_b = PERSONA_PRESETS.get(domain, PERSONA_PRESETS["default"])
 
-    # 2. Validate diversity
-    similarity = validate_persona_diversity(persona_a, persona_b, client)
+    if same_vendor:
+        # 같은 벤더: 극단 대비 팩 + temperature 차별화
+        persona_a, persona_b = SAME_VENDOR_PRESETS.get(domain, SAME_VENDOR_PRESETS["default"])
+        temp_a, temp_b = SAME_VENDOR_TEMPS
+        return {
+            "domain": domain,
+            "persona_a": persona_a,
+            "persona_b": persona_b,
+            "diversity_score": 0.75,   # 추정값 (같은 벤더 강제 다양성)
+            "source": "same_vendor_preset",
+            "temp_a": temp_a,
+            "temp_b": temp_b,
+        }
 
-    # 3. If too similar, fall back to dynamic generation
-    if similarity > 0.85:
-        persona_a, persona_b = _dynamic_generate(query, kg_context, client)
-        source = "dynamic"
-    else:
-        source = "preset"
+    # 교차 벤더: 기존 로직
+    try:
+        client = OpenAI(api_key=os.environ.get("OPENAI_API_KEY", ""))
+        persona_a, persona_b = PERSONA_PRESETS.get(domain, PERSONA_PRESETS["default"])
+        similarity = validate_persona_diversity(persona_a, persona_b, client)
+        if similarity > 0.85:
+            persona_a, persona_b = _dynamic_generate(query, kg_context, client)
+            source = "dynamic"
+        else:
+            source = "preset"
+    except Exception:
+        persona_a, persona_b = PERSONA_PRESETS.get(domain, PERSONA_PRESETS["default"])
+        similarity = 0.5
+        source = "preset_fallback"
 
     return {
         "domain": domain,
@@ -88,29 +142,32 @@ def generate_personas(query: str, kg_context: list = None) -> dict:
         "persona_b": persona_b,
         "diversity_score": round(1 - similarity, 3),
         "source": source,
+        "temp_a": None,
+        "temp_b": None,
     }
 
 
 def _dynamic_generate(query: str, kg_context: list, client: OpenAI) -> tuple:
-    """Fallback: LLM generates custom personas for unusual queries via Claude OAuth."""
-    from amp.core.emergent import _call_claude
-
+    """Fallback: LLM generates custom personas for unusual queries (OpenAI)."""
     context_str = "\n".join([f"- {c}" for c in kg_context[:3]]) if kg_context else "없음"
 
-    result = _call_claude(
-        f"""Query: {query}
+    prompt = f"""Query: {query}
 Past context: {context_str}
 
-Generate 2 contrasting expert personas. Requirements:
-- Genuinely different worldviews/values
-- Domain-appropriate expertise
-- Each catches blind spots the other misses
-Return: {{"persona_a": "...", "persona_b": "..."}}""",
-        system="You generate contrasting expert personas for dual-perspective analysis. Return valid JSON only.",
-    )
+Generate 2 genuinely contrasting expert personas with different worldviews.
+Each should catch blind spots the other misses.
+Return valid JSON only: {{"persona_a": "...", "persona_b": "..."}}"""
 
     try:
-        data = json.loads(result)
+        response = client.chat.completions.create(
+            model="gpt-4o-mini",
+            messages=[
+                {"role": "system", "content": "Generate contrasting personas. Return valid JSON only."},
+                {"role": "user", "content": prompt},
+            ],
+            temperature=0.7,
+        )
+        data = json.loads(response.choices[0].message.content)
         return data["persona_a"], data["persona_b"]
     except Exception:
         return PERSONA_PRESETS["default"]

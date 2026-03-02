@@ -74,17 +74,23 @@ def _print_emergent_result(result: dict):
     diversity_str = f" · 다양성 {diversity}" if diversity else ""
     console.print(f"[dim]페르소나 도메인: {result.get('persona_domain', 'default')}{diversity_str}[/dim]\n")
 
-    # Agent A
+    # Agent A / B 패널
     label_a = result.get("agent_a_label", "Agent A")
     label_b = result.get("agent_b_label", "Agent B")
+    same_vendor = result.get("same_vendor", False)
+
+    if same_vendor:
+        console.print(
+            "[dim yellow]⚠ 같은 벤더 구성 — 강제 다양성 모드 활성 "
+            "(극단 페르소나 + temp 차별화)[/dim yellow]"
+        )
+
     console.print(Panel(
         result["agent_a"],
         title=f"[cyan]Agent A ({label_a}) — {persona_a}[/cyan]",
         border_style="cyan",
         expand=False,
     ))
-
-    # Agent B
     console.print(Panel(
         result["agent_b"],
         title=f"[magenta]Agent B ({label_b}) — {persona_b}[/magenta]",
