@@ -47,14 +47,19 @@ def _html_e(text: str) -> str:
 class ClaudeExecutorPlugin(BasePlugin):
     name = "claude_executor"
     description = "Claude Code 로컬 실행 (/claude <작업>)"
-    enabled_by_default = False
+    enabled_by_default = True
 
     def can_handle(self, update) -> bool:
         if not (update.message and update.message.text):
             return False
         text = update.message.text.strip()
-        # 명시적 커맨드만 처리 (자연어 자동 실행은 llm tool-calling로 이관 예정)
-        return text.startswith("/claude")
+        if text.startswith("/claude"):
+            return True
+        if len(text) > 10:
+            for pattern in _TRIGGER_PATTERNS:
+                if re.search(pattern, text, re.IGNORECASE):
+                    return True
+        return False
 
     async def handle(self, update, context, config: dict, user_config: dict) -> str | None:
         text = update.message.text.strip()
