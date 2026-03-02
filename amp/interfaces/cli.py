@@ -317,10 +317,18 @@ def main(query: str | None, mode: str | None, config_path: str | None):
     """
     config = load_config(Path(config_path) if config_path else None)
 
-    # Check API key
-    if not config["llm"].get("api_key"):
-        console.print("[red]No API key found.[/red]")
-        console.print("Run [bold]amp setup[/bold] or set [bold]OPENAI_API_KEY[/bold] env var.")
+    # Check API key — OpenAI 또는 Claude OAuth 중 하나면 OK
+    has_openai = bool(config["llm"].get("api_key") or os.environ.get("OPENAI_API_KEY"))
+    has_claude = bool(
+        os.environ.get("CLAUDE_CODE_OAUTH_TOKEN")
+        or os.environ.get("ANTHROPIC_API_KEY")
+        or config.get("agents", {}).get("agent_b", {}).get("provider") == "anthropic_oauth"
+    )
+    if not has_openai and not has_claude:
+        console.print("[red]❌ API 키가 없습니다.[/red]")
+        console.print("  [bold]amp setup[/bold] 을 실행해 설정하거나:")
+        console.print("  [dim]export OPENAI_API_KEY=sk-...[/dim]")
+        console.print("  [dim]export CLAUDE_CODE_OAUTH_TOKEN=...[/dim]")
         sys.exit(1)
 
     kg_path = Path(config["amp"].get("kg_path", "~/.amp/kg.json")).expanduser()
@@ -340,55 +348,200 @@ def main(query: str | None, mode: str | None, config_path: str | None):
         asyncio.run(_repl(config, kg, effective_mode))
 
 
+def _mask(val: str) -> str:
+    return f"...{val[-6:]}" if len(val) > 6 else "(설정 안 됨)"
+
+
+def _write_env(env_path: Path, entries: dict[str, str]) -> None:
+    """~/.amp/.env 파일에 환경변수 저장 (기존 값 유지, 새 값 추가/갱신)."""
+    existing: dict[str, str] = {}
+    if env_path.exists():
+        for line in env_path.read_text().splitlines():
+            line = line.strip()
+            if line and not line.startswith("#") and "=" in line:
+                k, _, v = line.partition("=")
+                existing[k.strip()] = v.strip()
+    existing.update({k: v for k, v in entries.items() if v})
+    lines = ["# amp 환경변수 — amp setup으로 자동 생성", "# 민감 정보가 포함됩니다. git에 커밋하지 마세요.\n"]
+    for k, v in existing.items():
+        lines.append(f"{k}={v}")
+    env_path.write_text("\n".join(lines) + "\n")
+    env_path.chmod(0o600)
+
+
 @click.command()
 def setup():
-    """Interactive setup wizard for amp."""
+    """amp 설정 마법사 — API 키, 모델, 텔레그램 봇, 플러그인 설정."""
     console.print(Panel(
-        "[bold cyan]amp setup[/bold cyan]\n"
-        "Configure your local personal assistant",
+        "[bold cyan]✨ amp setup[/bold cyan]\n"
+        "[dim]Two minds. One answer.[/dim]\n\n"
+        "설정 마법사가 amp를 처음부터 끝까지 안내합니다.\n"
+        "각 단계에서 Enter를 누르면 현재 값을 유지합니다.",
         border_style="cyan",
+        expand=False,
     ))
 
-    ensure_amp_dir()
-
+    amp_dir = ensure_amp_dir()
+    env_path = amp_dir / ".env"
     config = load_config()
+    env_entries: dict[str, str] = {}
 
-    # API Key
-    current_key = config["llm"].get("api_key", "")
-    masked = f"...{current_key[-6:]}" if len(current_key) > 6 else "(not set)"
-    console.print(f"\nCurrent OpenAI API key: [dim]{masked}[/dim]")
+    # ── STEP 1: Agent A (OpenAI) ────────────────────────────────
+    console.print("\n[bold]━━ STEP 1/5: Agent A — OpenAI[/bold]")
+    console.print("[dim]Emergent 2-agent 모드에서 Agent A로 사용됩니다.[/dim]")
+    current = config.get("agents", {}).get("agent_a", {}).get("model", "gpt-4o")
+    console.print(f"  현재 모델: [cyan]{current}[/cyan]")
 
-    new_key = Prompt.ask(
-        "OpenAI API key (press Enter to keep current)",
-        default="",
-        password=True,
+    openai_key = Prompt.ask(
+        "  OpenAI API 키 (Enter = 유지)", default="", password=True, console=console
+    ).strip()
+    if openai_key:
+        env_entries["OPENAI_API_KEY"] = openai_key
+        config.setdefault("agents", {}).setdefault("agent_a", {})["provider"] = "openai"
+
+    a_model = Prompt.ask(
+        "  Agent A 모델", default=current, console=console
+    ).strip()
+    config.setdefault("agents", {}).setdefault("agent_a", {})["model"] = a_model
+
+    # ── STEP 2: Agent B (Claude) ────────────────────────────────
+    console.print("\n[bold]━━ STEP 2/5: Agent B — Claude[/bold]")
+    console.print("[dim]Emergent 모드 핵심 — Agent B가 Agent A와 독립적으로 분석합니다.[/dim]")
+    console.print()
+    console.print("  [bold green]Claude OAuth (무료)[/bold green] — Claude Code가 설치되어 있으면 API 비용 없이 사용 가능")
+    console.print("  [dim]Claude Code 설치: https://claude.ai/download[/dim]")
+    console.print()
+    console.print("  [bold yellow]Anthropic API 키[/bold yellow] — API 키가 있으면 직접 연결")
+
+    b_choice = Prompt.ask(
+        "  Agent B 방식 선택",
+        choices=["oauth", "api", "skip"],
+        default="oauth",
         console=console,
     )
-    if new_key.strip():
-        config["llm"]["api_key"] = new_key.strip()
 
-    # Model
-    console.print(f"\nCurrent model: [dim]{config['llm']['model']}[/dim]")
-    model = Prompt.ask(
-        "Model (gpt-4o-mini/gpt-4o/gpt-4.1)",
-        default=config["llm"]["model"],
+    if b_choice == "oauth":
+        oauth_token = Prompt.ask(
+            "  CLAUDE_CODE_OAUTH_TOKEN (Enter = 환경변수 자동 사용)",
+            default="", password=True, console=console
+        ).strip()
+        if oauth_token:
+            env_entries["CLAUDE_CODE_OAUTH_TOKEN"] = oauth_token
+        config.setdefault("agents", {}).setdefault("agent_b", {})["provider"] = "anthropic_oauth"
+        config["agents"]["agent_b"]["model"] = "claude-sonnet-4-6"
+        console.print("  [green]✓ Claude OAuth 설정 완료[/green]")
+    elif b_choice == "api":
+        anthropic_key = Prompt.ask(
+            "  Anthropic API 키", default="", password=True, console=console
+        ).strip()
+        if anthropic_key:
+            env_entries["ANTHROPIC_API_KEY"] = anthropic_key
+        b_model = Prompt.ask(
+            "  Agent B 모델", default="claude-sonnet-4-6", console=console
+        ).strip()
+        config.setdefault("agents", {}).setdefault("agent_b", {})["provider"] = "anthropic"
+        config["agents"]["agent_b"]["model"] = b_model
+        console.print("  [green]✓ Anthropic API 설정 완료[/green]")
+    else:
+        console.print("  [dim]Agent B 스킵 — solo/pipeline 모드만 사용 가능[/dim]")
+
+    # ── STEP 3: Telegram Bot ────────────────────────────────────
+    console.print("\n[bold]━━ STEP 3/5: 텔레그램 봇[/bold]")
+    console.print("[dim]텔레그램에서 amp를 사용하려면 봇 토큰이 필요합니다.[/dim]")
+    console.print("  1. 텔레그램에서 @BotFather 검색")
+    console.print("  2. /newbot 입력 → 봇 이름 설정")
+    console.print("  3. 발급된 토큰을 아래에 입력")
+
+    tg_token = Prompt.ask(
+        "  텔레그램 봇 토큰 (Enter = 스킵)",
+        default="", password=True, console=console
+    ).strip()
+    if tg_token:
+        env_entries["TELEGRAM_BOT_TOKEN"] = tg_token
+        config.setdefault("telegram", {})["token"] = "${TELEGRAM_BOT_TOKEN}"
+        console.print("  [green]✓ 텔레그램 봇 토큰 저장됨[/green]")
+    else:
+        console.print("  [dim]텔레그램 스킵 — CLI/REPL 모드로만 사용[/dim]")
+
+    # ── STEP 4: 이미지 생성 플러그인 ───────────────────────────
+    console.print("\n[bold]━━ STEP 4/5: 이미지 생성 플러그인 (선택)[/bold]")
+    console.print("[dim]/imagine 커맨드로 이미지를 생성할 수 있습니다.[/dim]")
+    console.print()
+    console.print("  [bold]나노바나나2[/bold] (Google Gemini 3.1 Flash Image) — ~$0.10/장, 최대 4K")
+    console.print("  [bold]DALL-E 3[/bold] — OpenAI DALL-E 3 (OpenAI API 키 필요)")
+    console.print("  [bold]로컬[/bold] — Automatic1111 / ComfyUI 로컬 서버")
+    console.print("  [bold]스킵[/bold] — 이미지 생성 비활성화")
+
+    img_choice = Prompt.ask(
+        "  이미지 생성 백엔드",
+        choices=["nanonbanana2", "dalle3", "local", "skip"],
+        default="skip",
         console=console,
     )
-    config["llm"]["model"] = model
 
-    # Default mode
-    console.print(f"\nCurrent default mode: [dim]{config['amp']['default_mode']}[/dim]")
+    if img_choice == "nanonbanana2":
+        google_key = Prompt.ask(
+            "  Google API 키", default="", password=True, console=console
+        ).strip()
+        if google_key:
+            env_entries["GOOGLE_API_KEY"] = google_key
+        config.setdefault("plugins", {}).setdefault("image_gen", {})["backend"] = "nanonbanana2"
+        console.print("  [green]✓ 나노바나나2 설정 완료[/green]")
+        console.print("  [dim]pip install 'amp-assistant[nanonbanana2]' 로 SDK 설치 필요[/dim]")
+    elif img_choice == "dalle3":
+        config.setdefault("plugins", {}).setdefault("image_gen", {})["backend"] = "dalle3"
+        console.print("  [green]✓ DALL-E 3 설정 완료 (OpenAI API 키 사용)[/green]")
+    elif img_choice == "local":
+        local_url = Prompt.ask(
+            "  로컬 서버 URL", default="http://localhost:7860", console=console
+        ).strip()
+        config.setdefault("plugins", {}).setdefault("image_gen", {})["backend"] = "local"
+        config["plugins"]["image_gen"]["local_url"] = local_url
+        console.print(f"  [green]✓ 로컬 서버 설정: {local_url}[/green]")
+    else:
+        console.print("  [dim]이미지 생성 스킵[/dim]")
+
+    # ── STEP 5: 기본 모드 ───────────────────────────────────────
+    console.print("\n[bold]━━ STEP 5/5: 기본 설정[/bold]")
+    current_mode = config.get("amp", {}).get("default_mode", "auto")
+    console.print("  [bold]auto[/bold]    — 질문 유형에 따라 자동 선택 (권장)")
+    console.print("  [bold]solo[/bold]    — 단일 AI, 빠른 답변")
+    console.print("  [bold]emergent[/bold] — 2-agent 독립 분석 (최고 품질)")
+    console.print("  [bold]pipeline[/bold] — 계획→실행→검토→수정 (코드/문서)")
+
     default_mode = Prompt.ask(
-        "Default mode (auto/solo/pipeline/emergent)",
-        default=config["amp"]["default_mode"],
+        "  기본 모드",
+        choices=["auto", "solo", "pipeline", "emergent"],
+        default=current_mode,
         console=console,
     )
-    config["amp"]["default_mode"] = default_mode
+    config.setdefault("amp", {})["default_mode"] = default_mode
 
-    # Save
+    # ── 저장 ────────────────────────────────────────────────────
     save_config(config)
-    console.print(f"\n[green]✓ Config saved to {DEFAULT_CONFIG_PATH}[/green]")
-    console.print("[dim]Run [bold]amp 'hello'[/bold] to test your setup.[/dim]")
+    if env_entries:
+        _write_env(env_path, env_entries)
+
+    console.print("\n" + "─" * 50)
+    console.print("[bold green]✅ 설정 완료![/bold green]\n")
+    console.print(f"  📄 config: [dim]{DEFAULT_CONFIG_PATH}[/dim]")
+    if env_entries:
+        console.print(f"  🔑 env:    [dim]{env_path}[/dim] (chmod 600)")
+    console.print()
+
+    # 다음 단계 안내
+    if env_entries.get("TELEGRAM_BOT_TOKEN"):
+        console.print("  [bold]텔레그램 봇 시작:[/bold]")
+        console.print("    [cyan]bash start_bot.sh[/cyan]")
+    console.print()
+    console.print("  [bold]CLI 테스트:[/bold]")
+    console.print("    [cyan]amp '안녕!'[/cyan]")
+    console.print("    [cyan]amp --mode emergent '이 결정 어떻게 생각해?'[/cyan]")
+    console.print()
+    console.print("  [bold]플러그인 설치:[/bold]")
+    console.print("    [cyan]amp plugin install https://github.com/user/my-plugin[/cyan]")
+    console.print("    [cyan]amp plugin new my-plugin[/cyan]  # 새 플러그인 만들기")
+    console.print()
 
 
 @click.group(invoke_without_command=True)
