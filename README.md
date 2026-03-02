@@ -142,6 +142,61 @@ Run `amp setup` for interactive configuration.
 
 ---
 
+## 같은 벤더 강제 다양성 (Same-Vendor Forced Diversity)
+
+Agent A와 B를 **같은 제공자**로 설정하면 amp가 자동으로 강제 다양성 모드를 활성화합니다.
+
+```
+⚠ 강제 다양성 모드 활성 — GPT×GPT 동일 벤더 감지
+```
+
+### 동작 방식
+
+**같은 벤더 감지** (자동):
+- `openai + openai` → 같은 벤더
+- `anthropic + anthropic_oauth` → 같은 벤더  
+- `openai + anthropic` → 교차 벤더 (일반 모드)
+
+**강제 다양성 적용:**
+
+| 설정 | Agent A | Agent B |
+|------|---------|---------|
+| 페르소나 | 극단 대비 팩 (도메인별) | 극단 대비 팩 |
+| Temperature | 0.3 (정밀/일관성) | 1.1 (창의/돌발) |
+| 역할 제약 | "데이터/수치/증거만" | "통념에 정면 도전" |
+
+**도메인별 극단 페르소나 (예시):**
+- `investment`: 퀀트 리스크 애널리스트 ↔ 모멘텀 성장 투자자
+- `business`: 리스크 관리 CFO ↔ 비전형 창업가
+- `career`: 커리어 최적화 전략가 ↔ 리스크 베팅 어드벤처러
+- `legal_contract`: 독소조항 사냥꾼 ↔ 사업 현실주의자
+- (10개 도메인 자동 감지)
+
+### CSER 비교
+
+| 구성 | CSER 예상 | 비고 |
+|------|-----------|------|
+| 교차 벤더 (GPT + Claude) | **0.8~0.9** | 구조적 최적 |
+| 같은 벤더 + 극단팩 + temp 차별화 | **0.65~0.75** | 실용적 대안 |
+| 같은 벤더 (다양성 없음) | 0.4~0.6 | 에코챔버 위험 |
+
+교차 벤더가 구조적으로 우위이지만, 같은 벤더도 강제 다양성으로 실용적 수준(0.65+)까지 끌어올립니다.
+
+### 설정 예시
+
+```yaml
+# ~/.amp/config.yaml
+llm:
+  agent_a:
+    provider: openai
+    model: gpt-4o
+  agent_b:
+    provider: openai          # 같은 벤더 → 자동으로 강제 다양성 적용
+    model: gpt-4o-mini
+```
+
+---
+
 ## Knowledge Graph
 
 Every emergent analysis is automatically saved to a local JSON knowledge graph at `~/.amp/kg.json`. amp builds a personal memory of your decisions and insights over time — all local, all yours.
