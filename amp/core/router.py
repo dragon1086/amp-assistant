@@ -140,13 +140,37 @@ def select_debate_rounds(query: str, threshold: float = 0.7) -> int:
     return 4 if estimate_complexity(query) >= threshold else 2
 
 
-def detect_rounds(query: str, effective_mode: str) -> int:
-    """Backward-compatible API used by CLI/Telegram.
+# Patterns that warrant a deeper 4-round sequential debate
+_DEBATE_4R_KEYWORDS = [
+    "vs", " vs ", "비교", "어느 게 낫", "뭐가 나아", "뭐가 좋",
+    "which is better", "대결", "찬반", "pros and cons", "장단점",
+    "논쟁", "반박", "critique", "devil's advocate",
+    "심층 분석", "deep dive", "철저히",
+]
 
-    Returns 2 for non-emergent modes, otherwise adaptive 2/4.
+
+def detect_rounds(query: str, effective_mode: str = "auto") -> int:
+    """Determine how many debate rounds to run for emergent mode.
+
+    Combines keyword matching (fast, precise) and complexity scoring.
+
+    Args:
+        query: User query text
+        effective_mode: Mode string; only "auto" or "emergent" triggers depth logic
+
+    Returns:
+        2 — independent analysis + reconcile + verify (default, faster)
+        4 — sequential debate: A→B-rebuts→A-counters→B-recounters + synthesis
     """
-    if effective_mode != "emergent":
+    if effective_mode not in ("auto", "emergent"):
         return 2
+
+    q = query.lower()
+    for kw in _DEBATE_4R_KEYWORDS:
+        if kw in q:
+            return 4
+
+    # Score-based fallback (handles nuanced complex queries)
     return select_debate_rounds(query)
 
 
@@ -158,33 +182,3 @@ def describe_mode(mode: str) -> str:
         "emergent": "emergent (2-agent 독립 분석)",
     }
     return descriptions.get(mode, mode)
-
-
-# Patterns that warrant a deeper 4-round sequential debate
-_DEBATE_4R_KEYWORDS = [
-    "vs", " vs ", "비교", "어느 게 낫", "뭐가 나아", "뭐가 좋",
-    "which is better", "대결", "찬반", "pros and cons", "장단점",
-    "논쟁", "반박", "critique", "devil's advocate",
-    "심층 분석", "deep dive", "철저히",
-]
-
-
-def detect_rounds(query: str, mode: str = "auto") -> int:
-    """Determine how many debate rounds to run for emergent mode.
-
-    Combines keyword matching (fast, precise) and complexity scoring.
-
-    Returns:
-        2 — independent analysis + reconcile + verify (default, faster)
-        4 — sequential debate: A→B-rebuts→A-counters→B-recounters + synthesis
-    """
-    if mode not in ("auto", "emergent"):
-        return 2
-
-    q = query.lower()
-    for kw in _DEBATE_4R_KEYWORDS:
-        if kw in q:
-            return 4
-
-    # Score-based fallback (handles nuanced complex queries)
-    return select_debate_rounds(query)

@@ -27,6 +27,7 @@ from rich.text import Text
 from amp.cli.plugin_cmd import plugin
 from amp.config import ensure_amp_dir, load_config, save_config, DEFAULT_CONFIG_PATH
 from amp.core import emergent, router, solo
+from amp.core.router import detect_rounds
 from amp.core import pipeline_engine as pipeline
 from amp.core.kg import KnowledgeGraph
 from amp.core.metrics import format_cser
@@ -78,6 +79,9 @@ def _print_emergent_result(result: dict):
     label_a = result.get("agent_a_label", "Agent A")
     label_b = result.get("agent_b_label", "Agent B")
     same_vendor = result.get("same_vendor", False)
+    rounds = result.get("rounds", 2)
+    if rounds == 4:
+        console.print("[dim cyan]⚡ 4-round sequential debate mode[/dim cyan]\n")
 
     if same_vendor:
         console.print(
@@ -157,13 +161,18 @@ async def _process_query(
     """Route query to appropriate engine and return result."""
     effective_mode = router.detect_mode(query, mode)
 
-    with console.status(f"[dim]Processing ({effective_mode} mode)...[/dim]", spinner="dots"):
+    rounds = detect_rounds(query, effective_mode)
+    mode_label = effective_mode
+    if effective_mode == "emergent" and rounds == 4:
+        mode_label = "emergent/4-round debate"
+
+    with console.status(f"[dim]Processing ({mode_label} mode)...[/dim]", spinner="dots"):
         if effective_mode == "solo":
             result = await asyncio.to_thread(solo.run, query, context, config)
         elif effective_mode == "pipeline":
             result = await asyncio.to_thread(pipeline.run, query, context, config)
         else:  # emergent
-            result = await asyncio.to_thread(emergent.run, query, context, config)
+            result = await asyncio.to_thread(emergent.run, query, context, config, None, rounds)
 
     # Auto-save emergent insights to KG
     if effective_mode == "emergent" and result.get("answer"):

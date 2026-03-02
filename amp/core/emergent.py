@@ -1,10 +1,16 @@
-"""Emergent mode - 2-agent independent analysis with reconciliation.
+"""Emergent mode - 2-agent analysis with reconciliation.
 
 The killer feature of amp: two agents independently analyze a query,
 then a reconciler synthesizes agreements and conflicts into a better answer
 than either agent could produce alone.
 
-Key invariant: Agent A and Agent B MUST NOT see each other's output.
+Adaptive rounds:
+  rounds=2 (default): Agents analyze INDEPENDENTLY (no cross-visibility).
+                      → Reconciler + Verifier synthesize. Best for open analysis.
+  rounds=4:           Sequential debate: A→ B-rebuts → A-counters → B-recounters → Synthesis.
+                      Best for controversy, comparisons, and adversarial stress-testing.
+
+Key invariant for rounds=2: Agent A and Agent B MUST NOT see each other's output.
 This independence is what creates emergence.
 
 Agent A & B 모두 config.yaml에서 자유롭게 설정 가능:
@@ -97,14 +103,109 @@ Return valid JSON only."""
         }
 
 
-def run(query: str, context: list[dict], config: dict, on_progress=None) -> dict:
-    """Execute emergent 2-agent analysis.
+def _run_4round_debate(
+    query: str, prov_a: str, mod_a: str, prov_b: str, mod_b: str,
+    personas: dict, kg_context_str: str, same_vendor: bool,
+    call_fn,  # _call_with_fallback bound closure
+    _p,       # progress callback
+) -> tuple[str, str, str, str, str]:
+    """4-round sequential debate (ported from ~/emergent/amp.py).
 
-    Stages:
-      1. Agent A (analyst)  — OpenAI
-      2. Agent B (critic)   — Anthropic (does NOT see A's output)
-      3. Reconciler sees both → synthesizes (OpenAI)
-      4. Verifier checks logic consistency (OpenAI)
+    Round 1: Agent A answers
+    Round 2: Agent B rebuts (반박) — sees A's answer
+    Round 3: Agent A counters (반론) — sees B's rebuttal
+    Round 4: Agent B re-rebuts (재반박) — sees A's counter
+    + Synthesis by Reconciler
+
+    Returns: (answer_a, rebuttal_b, counter_a, counter_b, synthesis)
+    """
+    persona_a = personas.get("persona_a", "분석적 전문가")
+    persona_b = personas.get("persona_b", "비판적 전문가")
+
+    # Round 1: Agent A initial analysis
+    _p("agent_a_start", persona=persona_a, model=f"{prov_a}/{mod_a}")
+    a_system = (
+        f"당신은 {persona_a}입니다. 질문에 대해 깊이 있는 분석을 제공하세요."
+        " Answer in the same language as the user's question." + kg_context_str
+    )
+    answer_a, _ = call_fn(
+        f"이 질문을 분석하고 전문가적 견해를 제공하세요:\n\n{query}",
+        a_system, prov_a, mod_a,
+    )
+    _p("agent_a_done", persona=persona_a, preview=answer_a[:120])
+
+    # Round 2: Agent B rebuttal (sees A's answer)
+    _p("agent_b_start", persona=persona_b, model=f"{prov_b}/{mod_b}")
+    b_system = (
+        f"당신은 {persona_b}입니다. 상대방의 분석을 비판적으로 검토하고 반박하세요."
+        " 동의하는 부분과 동의하지 않는 부분을 명확히 구분하세요."
+        " Answer in the same language as the user's question." + kg_context_str
+    )
+    rebuttal_b, _ = call_fn(
+        f"원래 질문: {query}\n\n[{persona_a}]의 분석:\n{answer_a}\n\n"
+        "위 분석에 대해 비판적으로 반박하세요.",
+        b_system, prov_b, mod_b,
+    )
+    _p("agent_b_done", persona=persona_b, preview=rebuttal_b[:120])
+
+    # Round 3: Agent A counter (sees B's rebuttal)
+    _p("agent_a_counter", persona=persona_a)
+    counter_a, _ = call_fn(
+        f"원래 질문: {query}\n\n나의 원래 분석:\n{answer_a}\n\n"
+        f"[{persona_b}]의 반박:\n{rebuttal_b}\n\n"
+        "상대방의 반박에 반론하세요. 타당한 비판은 인정하고, 여전히 유효한 논점은 방어하세요.",
+        a_system, prov_a, mod_a,
+    )
+
+    # Round 4: Agent B re-rebuttal (sees A's counter)
+    _p("agent_b_recounter", persona=persona_b)
+    counter_b, _ = call_fn(
+        f"원래 질문: {query}\n\n나의 반박:\n{rebuttal_b}\n\n"
+        f"[{persona_a}]의 반론:\n{counter_a}\n\n"
+        "최종 입장을 정리하세요. 새로운 논점이 있다면 제시하세요.",
+        b_system, prov_b, mod_b,
+    )
+
+    # Synthesis
+    _p("reconciling")
+    synth_prompt = (
+        f"질문: {query}\n\n"
+        f"== [{persona_a}] 최초 분석 ==\n{answer_a}\n\n"
+        f"== [{persona_b}] 반박 ==\n{rebuttal_b}\n\n"
+        f"== [{persona_a}] 반론 ==\n{counter_a}\n\n"
+        f"== [{persona_b}] 재반박 ==\n{counter_b}\n\n"
+        "양측 토론을 종합해 최종 판단을 내리세요.\n"
+        "Format your response as:\n"
+        "AGREEMENTS:\n- [합의된 사항]\n\n"
+        "CONFLICTS:\n- [이견 사항]\n\n"
+        "SYNTHESIZED ANSWER:\n[최종 종합 답변]"
+    )
+    synthesis_raw = call_fn(
+        synth_prompt,
+        "You are a neutral synthesizer. Produce the final unified answer from a debate. "
+        "Answer in the same language as the original question.",
+        prov_b, mod_b,
+    )[0]
+
+    return answer_a, rebuttal_b, counter_a, counter_b, synthesis_raw
+
+
+def run(query: str, context: list[dict], config: dict, on_progress=None,
+        rounds: int = 2) -> dict:
+    """Execute emergent multi-agent analysis.
+
+    Stages (rounds=2, default — independent analysis):
+      1. Agent A (analyst)  — does NOT see B's output
+      2. Agent B (critic)   — does NOT see A's output
+      3. Reconciler sees both → synthesizes
+      4. Verifier checks logic consistency
+
+    Stages (rounds=4 — sequential debate):
+      1. Agent A answers
+      2. Agent B rebuts (sees A)
+      3. Agent A counters (sees B's rebuttal)
+      4. Agent B re-rebuts (sees A's counter)
+      + Synthesis
 
     Args:
         query: User's question or request
@@ -114,10 +215,11 @@ def run(query: str, context: list[dict], config: dict, on_progress=None) -> dict
                      stages: persona_selected | agent_a_start | agent_a_done |
                              agent_b_start | agent_b_done | reconciling |
                              verifying | done | error
+        rounds: 2 (independent, default) or 4 (sequential debate)
 
     Returns:
         dict with keys: answer, mode, agent_a, agent_b, cser, confidence,
-                        agreements, conflicts
+                        agreements, conflicts, rounds
     """
     def _p(stage: str, **data):
         if on_progress:
@@ -215,6 +317,45 @@ def run(query: str, context: list[dict], config: dict, on_progress=None) -> dict
             return call_llm(prompt, system=system, provider="openai",
                            model=fallback_model, temperature=temperature), "openai"
 
+    # ── rounds=4: Sequential debate ─────────────────────────────────────────
+    if rounds == 4:
+        answer_a, rebuttal_b, counter_a, counter_b, synthesis_raw = _run_4round_debate(
+            query, prov_a, mod_a, prov_b, mod_b,
+            personas, kg_context_str, same_vendor,
+            _call_with_fallback, _p,
+        )
+        agent_a_text = answer_a
+        agent_b_text = rebuttal_b  # primary B output for CSER
+        cser_data = calculate_cser(agent_a_text, counter_b)  # final outputs have most divergence
+        agreements, conflicts, synthesized = _parse_reconciliation(synthesis_raw)
+        final_answer = synthesized or synthesis_raw
+        kg.add(content=final_answer, tags=["emergent", "debate", "4round"])
+        insights = _extract_insights(query, agent_a_text, agent_b_text, final_answer, config)
+        _p("done")
+        return {
+            "answer": final_answer,
+            "mode": "emergent",
+            "rounds": 4,
+            "agent_a": agent_a_text,
+            "agent_b": agent_b_text,
+            "debate_counter_a": counter_a,
+            "debate_counter_b": counter_b,
+            "cser": cser_data["cser"],
+            "confidence": cser_data["confidence"],
+            "agreements": agreements,
+            "conflicts": conflicts,
+            "persona_a": personas["persona_a"],
+            "persona_b": personas["persona_b"],
+            "persona_domain": personas["domain"],
+            "persona_diversity": personas["diversity_score"],
+            "persona_source": personas["source"],
+            "agent_a_label": f"{prov_a}/{mod_a}",
+            "agent_b_label": f"{prov_b}/{mod_b}",
+            "same_vendor": same_vendor,
+            "insights": insights,
+        }
+
+    # ── rounds=2 (default): Independent analysis ─────────────────────────────
     _p("agent_a_start", persona=personas.get("persona_a", "Agent A"), model=f"{prov_a}/{mod_a}")
     agent_a_text, prov_a_actual = _call_with_fallback(
         agent_a_prompt, agent_a_system, prov_a, mod_a, temp_a, reasoning_effort=reason_a
@@ -299,9 +440,11 @@ Answer in the same language as the original question."""
     # Stage 5: Extract insight metadata
     insights = _extract_insights(query, agent_a_text, agent_b_text, final_answer, config)
 
+    _p("done")
     return {
         "answer": final_answer,
         "mode": "emergent",
+        "rounds": 2,
         "agent_a": agent_a_text,
         "agent_b": agent_b_text,
         "cser": cser_data["cser"],
