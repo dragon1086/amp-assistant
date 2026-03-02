@@ -32,16 +32,41 @@ from amp.core.metrics import format_cser
 logger = logging.getLogger(__name__)
 
 
-def _build_emergent_message(result: dict) -> str:
-    """Format emergent result for Telegram."""
-    lines = ["🤔 *분석 중... (emergent mode)*\n"]
+def _escape_md(text: str) -> str:
+    """Escape special characters for Telegram MarkdownV2."""
+    special = '_*[]()~`>#+-=|{}.!'
+    return ''.join(f'\\{c}' if c in special else c for c in str(text))
 
-    lines.append("*\\[Agent A — Analyst\\]*")
-    lines.append(result["agent_a"][:600] + ("..." if len(result["agent_a"]) > 600 else ""))
+
+def _build_emergent_message(result: dict) -> str:
+    """Format emergent result for Telegram MarkdownV2."""
+    lines = ["🤔 *emergent mode*\n"]
+
+    # Auto-generated personas
+    persona_a = result.get("persona_a", "Agent A")
+    persona_b = result.get("persona_b", "Agent B")
+    persona_domain = result.get("persona_domain", "default")
+    persona_source = result.get("persona_source", "preset")
+    persona_diversity = result.get("persona_diversity", 0.0)
+
+    lines.append("*🎭 생성된 페르소나:*")
+    lines.append(f"  A: {_escape_md(persona_a)}")
+    lines.append(f"  B: {_escape_md(persona_b)}")
+    lines.append(
+        f"  _도메인: {_escape_md(persona_domain)} \\| "
+        f"소스: {_escape_md(persona_source)} \\| "
+        f"다양성: {_escape_md(str(round(persona_diversity, 2)))}_"
+    )
     lines.append("")
 
-    lines.append("*\\[Agent B — Critic\\]*")
-    lines.append(result["agent_b"][:600] + ("..." if len(result["agent_b"]) > 600 else ""))
+    lines.append(f"*\\[Agent A — {_escape_md(persona_a[:30])}\\]*")
+    a_text = result["agent_a"]
+    lines.append(_escape_md(a_text[:600]) + ("\\.\\.\\." if len(a_text) > 600 else ""))
+    lines.append("")
+
+    lines.append(f"*\\[Agent B — {_escape_md(persona_b[:30])}\\]*")
+    b_text = result["agent_b"]
+    lines.append(_escape_md(b_text[:600]) + ("\\.\\.\\." if len(b_text) > 600 else ""))
     lines.append("")
 
     lines.append("━" * 20)
@@ -49,20 +74,21 @@ def _build_emergent_message(result: dict) -> str:
     if result.get("agreements"):
         lines.append("*✓ 합의:*")
         for a in result["agreements"][:2]:
-            lines.append(f"• {a}")
+            lines.append(f"• {_escape_md(a)}")
         lines.append("")
 
     if result.get("conflicts"):
         lines.append("*⚡ 이견:*")
         for c in result["conflicts"][:2]:
-            lines.append(f"• {c}")
+            lines.append(f"• {_escape_md(c)}")
         lines.append("")
 
     lines.append("*✅ 결론:*")
-    lines.append(result["answer"])
+    lines.append(_escape_md(result["answer"]))
     lines.append("")
 
-    lines.append(f"📊 신뢰도: CSER {result['cser']:.2f} ({'높음' if result['confidence'] == 'high' else '낮음'})")
+    cser_display = format_cser(result["cser"], result["confidence"])
+    lines.append(f"📊 {_escape_md(cser_display)}")
     lines.append("━" * 20)
 
     return "\n".join(lines)
@@ -86,7 +112,7 @@ class AmpBot:
 
     async def cmd_start(self, update: Update, ctx: ContextTypes.DEFAULT_TYPE):
         await update.message.reply_text(
-            "👋 *amp에 오신 것을 환영합니다!*\n\n"
+            "👋 *amp에 오신 것을 환영합니다\\!*\n\n"
             "Two minds\\. One answer\\.\n\n"
             "저는 두 AI 에이전트가 독립적으로 분석하고 화해하는 방식으로 동작하는 "
             "로컬 개인 비서입니다\\.\n\n"
@@ -121,8 +147,8 @@ class AmpBot:
         stats = self.kg.stats()
         await update.message.reply_text(
             f"📊 *amp 통계*\n\n"
-            f"🧠 KG: {stats['node_count']} nodes, {stats['edge_count']} edges\n"
-            f"🏷️ Tags: {', '.join(stats['tags'][:5]) or 'none'}",
+            f"🧠 KG: {stats['nodes']} nodes, {stats['edges']} edges\n"
+            f"💾 DB: `{stats['db_path']}`",
             parse_mode="Markdown",
         )
 
@@ -149,15 +175,15 @@ class AmpBot:
             effective_mode = router.detect_mode(query, mode)
 
             if effective_mode == "solo":
-                result = await solo.run(query, context, self.config)
+                result = await asyncio.to_thread(solo.run, query, context, self.config)
             elif effective_mode == "pipeline":
-                result = await pipeline.run(query, context, self.config)
+                result = await asyncio.to_thread(pipeline.run, query, context, self.config)
             else:
-                result = await emergent.run(query, context, self.config)
+                result = await asyncio.to_thread(emergent.run, query, context, self.config)
 
             result["effective_mode"] = effective_mode
 
-            # Auto-save emergent insights
+            # Auto-save emergent insights to KG
             if effective_mode == "emergent" and result.get("answer"):
                 node_id = self.kg.add(
                     f"Q: {query}\nA: {result['answer'][:500]}",
@@ -211,7 +237,7 @@ def run_bot(config: dict | None = None):
             "Set TELEGRAM_BOT_TOKEN env var or add to config.yaml"
         )
 
-    kg_path = Path(config["amp"].get("kg_path", "~/.amp/kg.json")).expanduser()
+    kg_path = Path(config["amp"].get("kg_path", "~/.amp/kg.db")).expanduser()
     kg = KnowledgeGraph(kg_path)
 
     bot = AmpBot(config, kg)

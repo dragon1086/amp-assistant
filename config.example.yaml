@@ -23,5 +23,5 @@ amp:
   #   emergent  - Always use 2-agent independent analysis
   default_mode: auto
 
-  # Local knowledge graph storage path
-  kg_path: ~/.amp/kg.json
+  # Local knowledge graph storage path (SQLite)
+  kg_path: ~/.amp/kg.db
