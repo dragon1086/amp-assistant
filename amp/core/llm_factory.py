@@ -57,11 +57,12 @@ def _call_openai(prompt: str, system: str, model: str, temperature: float | None
     kwargs: dict = {"model": model, "messages": messages}
     if temperature is not None:
         kwargs["temperature"] = temperature
-    # gpt-5.x는 max_completion_tokens 사용
+    # gpt-5.x / o-series: reasoning_effort 지원
     if model.startswith("gpt-5") or model.startswith("o"):
-        resp = client.chat.completions.create(**kwargs)
-    else:
-        resp = client.chat.completions.create(**kwargs)
+        reasoning_effort = kwargs.pop("reasoning_effort", None) or os.environ.get("OPENAI_REASONING_EFFORT")
+        if reasoning_effort:
+            kwargs["reasoning_effort"] = reasoning_effort
+    resp = client.chat.completions.create(**kwargs)
     return resp.choices[0].message.content
 
 

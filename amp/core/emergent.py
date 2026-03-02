@@ -41,17 +41,17 @@ def _is_same_vendor(prov_a: str, prov_b: str) -> bool:
     return _family(prov_a) == _family(prov_b)
 
 
-def _get_agent_cfg(config: dict, agent: str) -> tuple[str, str]:
-    """config에서 (provider, model) 반환. 기본값 fallback 포함."""
+def _get_agent_cfg(config: dict, agent: str) -> tuple[str, str, str | None]:
+    """config에서 (provider, model, reasoning_effort) 반환. 기본값 fallback 포함."""
     agent_cfg = config.get("agents", {}).get(agent, {})
+    reasoning_effort = agent_cfg.get("reasoning_effort", None)
     if agent_cfg.get("provider") and agent_cfg.get("model"):
-        return agent_cfg["provider"], agent_cfg["model"]
+        return agent_cfg["provider"], agent_cfg["model"], reasoning_effort
     # 기본값: Agent A = anthropic_oauth (Claude, 무료), Agent B = openai (크로스 벤더)
-    # 사용자가 config에서 agents.agent_a / agents.agent_b 로 자유롭게 커스터마이징 가능
     if agent == "agent_a":
-        return "anthropic_oauth", "claude-sonnet-4-6"
+        return "anthropic_oauth", "claude-sonnet-4-6", None
     else:
-        return "openai", config.get("llm", {}).get("model", "gpt-4o-mini")
+        return "openai", config.get("llm", {}).get("model", "gpt-4o-mini"), None
 
 
 def _extract_insights(
@@ -59,7 +59,7 @@ def _extract_insights(
     reconciled: str, config: dict
 ) -> dict:
     """Extract agreement/conflict structure between two agents."""
-    provider_a, model_a = _get_agent_cfg(config, "agent_a")
+    provider_a, model_a, _ = _get_agent_cfg(config, "agent_a")
     label_a = f"{provider_a}/{model_a}"
     label_b_cfg = _get_agent_cfg(config, "agent_b")
     label_b = f"{label_b_cfg[0]}/{label_b_cfg[1]}"
@@ -97,7 +97,7 @@ Return valid JSON only."""
         }
 
 
-def run(query: str, context: list[dict], config: dict) -> dict:
+def run(query: str, context: list[dict], config: dict, on_progress=None) -> dict:
     """Execute emergent 2-agent analysis.
 
     Stages:
@@ -110,11 +110,21 @@ def run(query: str, context: list[dict], config: dict) -> dict:
         query: User's question or request
         context: Conversation history
         config: amp configuration dict
+        on_progress: optional callable(stage: str, data: dict) for real-time updates
+                     stages: persona_selected | agent_a_start | agent_a_done |
+                             agent_b_start | agent_b_done | reconciling |
+                             verifying | done | error
 
     Returns:
         dict with keys: answer, mode, agent_a, agent_b, cser, confidence,
                         agreements, conflicts
     """
+    def _p(stage: str, **data):
+        if on_progress:
+            try:
+                on_progress(stage, data)
+            except Exception:
+                pass
     # Build context summary (shared background, NOT agent outputs)
     ctx_summary = ""
     if context:
@@ -124,8 +134,8 @@ def run(query: str, context: list[dict], config: dict) -> dict:
         )
 
     # Stage 1 & 2: config에서 provider/model 읽어서 독립 실행
-    prov_a, mod_a = _get_agent_cfg(config, "agent_a")
-    prov_b, mod_b = _get_agent_cfg(config, "agent_b")
+    prov_a, mod_a, reason_a = _get_agent_cfg(config, "agent_a")
+    prov_b, mod_b, reason_b = _get_agent_cfg(config, "agent_b")
 
     # 같은 벤더 여부 감지 → 강제 다양성 모드
     same_vendor = _is_same_vendor(prov_a, prov_b)
@@ -135,6 +145,11 @@ def run(query: str, context: list[dict], config: dict) -> dict:
     kg_nodes = kg.search(query, top_k=3)
     kg_context = [node["content"] for node in kg_nodes]
     personas = generate_personas(query, kg_context, same_vendor=same_vendor)
+    _p("persona_selected",
+       persona_a=personas.get("persona_a", "Agent A"),
+       persona_b=personas.get("persona_b", "Agent B"),
+       model_a=f"{prov_a}/{mod_a}",
+       model_b=f"{prov_b}/{mod_b}")
 
     kg_context_str = ""
     if kg_nodes:
@@ -186,21 +201,32 @@ def run(query: str, context: list[dict], config: dict) -> dict:
     # OAuth fallback: anthropic_oauth 실패 시 openai로 자동 전환
     fallback_model = config.get("llm", {}).get("model", "gpt-4o-mini")
 
-    def _call_with_fallback(prompt: str, system: str, provider: str, model: str, temperature=None) -> tuple[str, str]:
+    def _call_with_fallback(prompt: str, system: str, provider: str, model: str,
+                            temperature=None, reasoning_effort=None) -> tuple[str, str]:
         """LLM 호출. OAuth 미인증 시 openai로 fallback. (응답, 실제사용provider) 반환."""
         from amp.core.llm_factory import OAuthNotAvailableError
+        kwargs = {}
+        if reasoning_effort:
+            kwargs["reasoning_effort"] = reasoning_effort
         try:
-            return call_llm(prompt, system=system, provider=provider, model=model, temperature=temperature), provider
+            return call_llm(prompt, system=system, provider=provider, model=model,
+                           temperature=temperature, **kwargs), provider
         except OAuthNotAvailableError:
-            return call_llm(prompt, system=system, provider="openai", model=fallback_model, temperature=temperature), "openai"
+            return call_llm(prompt, system=system, provider="openai",
+                           model=fallback_model, temperature=temperature), "openai"
 
+    _p("agent_a_start", persona=personas.get("persona_a", "Agent A"), model=f"{prov_a}/{mod_a}")
     agent_a_text, prov_a_actual = _call_with_fallback(
-        agent_a_prompt, agent_a_system, prov_a, mod_a, temp_a
+        agent_a_prompt, agent_a_system, prov_a, mod_a, temp_a, reasoning_effort=reason_a
     )
+    _p("agent_a_done", persona=personas.get("persona_a", "Agent A"), preview=agent_a_text[:120])
+
     # Agent B는 Agent A 출력을 절대 보지 않음 (독립성 불변 조건)
+    _p("agent_b_start", persona=personas.get("persona_b", "Agent B"), model=f"{prov_b}/{mod_b}")
     agent_b_text, prov_b_actual = _call_with_fallback(
-        agent_b_prompt, agent_b_system, prov_b, mod_b, temp_b
+        agent_b_prompt, agent_b_system, prov_b, mod_b, temp_b, reasoning_effort=reason_b
     )
+    _p("agent_b_done", persona=personas.get("persona_b", "Agent B"), preview=agent_b_text[:120])
 
     # fallback 발생 시 same_vendor 재계산 (다양성 로직에 반영)
     if prov_a_actual != prov_a or prov_b_actual != prov_b:
@@ -235,6 +261,7 @@ SYNTHESIZED ANSWER:
 [your final synthesized answer in the same language as the original question]"""
 
     # Reconciler & Verifier: Agent B provider 사용 (A와 다른 관점 유지)
+    _p("reconciling", cser=cser_data.get("score", 0))
     reconciled_raw = call_llm(
         reconciler_prompt,
         system="You are a master synthesizer. You receive two independent expert analyses and produce a superior unified answer that captures the best of both perspectives. Answer in the same language as the original question.",
@@ -256,6 +283,7 @@ If the answer is logically consistent and complete, output it as-is with "VERIFI
 If you find issues, output the corrected version with "CORRECTED: " prefix.
 Answer in the same language as the original question."""
 
+    _p("verifying")
     verified_raw = call_llm(
         verifier_prompt,
         system="You are a logical consistency checker. Verify answers for correctness. Answer in the same language as the original question.",
