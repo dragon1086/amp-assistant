@@ -50,7 +50,8 @@ def _get_agent_cfg(config: dict, agent: str) -> tuple[str, str]:
     if agent == "agent_a":
         return "openai", config.get("llm", {}).get("model", "gpt-4o")
     else:
-        return "anthropic_oauth", "claude-sonnet-4-6"
+        # agent_b: 명시 설정 없으면 openai로 fallback (anthropic_oauth 미인증 환경 대응)
+        return "openai", config.get("llm", {}).get("model", "gpt-4o")
 
 
 def _extract_insights(
