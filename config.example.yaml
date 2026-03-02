@@ -8,12 +8,28 @@ llm:
   embedding_model: text-embedding-3-small  # OpenAI only — no Claude equivalent
 
 agents:
+  # Agent A & B는 자유롭게 조합 가능
+  # 교차 벤더(권장): CSER 높음, 독창적 관점 충돌 최대화
+  # 같은 벤더:       동작하지만 CSER 낮아질 수 있음 (비슷한 답 경향)
+
   agent_a:
     provider: openai
-    model: gpt-5.2           # kept for cross-provider diversity (the product's value)
+    model: gpt-4o            # openai | anthropic | anthropic_oauth | local
   agent_b:
     provider: anthropic_oauth
-    model: claude-oauth      # free via Claude Code OAuth
+    model: claude-sonnet-4-6  # Claude Code OAuth = 무료
+
+  # 같은 벤더 예시 (GPT끼리):
+  # agent_a: {provider: openai, model: gpt-4o}
+  # agent_b: {provider: openai, model: gpt-4.1}
+
+  # 같은 벤더 예시 (Claude끼리):
+  # agent_a: {provider: anthropic_oauth, model: claude-opus-4-6}
+  # agent_b: {provider: anthropic_oauth, model: claude-sonnet-4-6}
+
+  # 로컬 모델 (Ollama):
+  # agent_a: {provider: local, model: llama3.3}
+  # agent_b: {provider: local, model: mistral}
 
 telegram:
   # Telegram bot token from @BotFather

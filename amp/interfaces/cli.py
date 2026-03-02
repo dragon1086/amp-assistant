@@ -75,9 +75,11 @@ def _print_emergent_result(result: dict):
     console.print(f"[dim]페르소나 도메인: {result.get('persona_domain', 'default')}{diversity_str}[/dim]\n")
 
     # Agent A
+    label_a = result.get("agent_a_label", "Agent A")
+    label_b = result.get("agent_b_label", "Agent B")
     console.print(Panel(
         result["agent_a"],
-        title=f"[cyan]Agent A — {persona_a}[/cyan]",
+        title=f"[cyan]Agent A ({label_a}) — {persona_a}[/cyan]",
         border_style="cyan",
         expand=False,
     ))
@@ -85,7 +87,7 @@ def _print_emergent_result(result: dict):
     # Agent B
     console.print(Panel(
         result["agent_b"],
-        title=f"[magenta]Agent B — {persona_b}[/magenta]",
+        title=f"[magenta]Agent B ({label_b}) — {persona_b}[/magenta]",
         border_style="magenta",
         expand=False,
     ))
