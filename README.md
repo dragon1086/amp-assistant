@@ -49,20 +49,36 @@ Emergent mode:
 
 ## Quick install
 
+**한 줄 설치 (권장):**
 ```bash
-pip install amp-assistant
-amp setup          # interactive setup (API key, model, etc.)
-amp "hello"        # test it works
+curl -fsSL https://raw.githubusercontent.com/amp-assistant/amp/main/install.sh | bash
+```
+> pipx, uv, pip 순으로 자동 감지해서 설치합니다.
+
+**pipx로 직접:**
+```bash
+pipx install git+https://github.com/amp-assistant/amp
+amp setup   # 대화형 설정 wizard (API 키, 모델, 텔레그램 토큰)
+amp "hello"
 ```
 
-Or from source:
+**uv로 (가장 빠름):**
+```bash
+uv tool install git+https://github.com/amp-assistant/amp
+amp setup && amp "hello"
+```
 
+**PyPI (릴리스 버전):**
+```bash
+pip install amp-assistant
+amp setup && amp "hello"
+```
+
+**소스에서:**
 ```bash
 git clone https://github.com/amp-assistant/amp
-cd amp
-pip install -e .
-export OPENAI_API_KEY=sk-...
-amp "hello"
+cd amp && pip install -e .
+amp setup
 ```
 
 ---

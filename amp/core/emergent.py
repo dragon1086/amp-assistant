@@ -6,82 +6,73 @@ than either agent could produce alone.
 
 Key invariant: Agent A and Agent B MUST NOT see each other's output.
 This independence is what creates emergence.
+
+Agent A & B 모두 config.yaml에서 자유롭게 설정 가능:
+  같은 벤더(GPT+GPT, Claude+Claude)도 동작하나 CSER(독창성)가 낮아질 수 있음.
+  교차 벤더(GPT+Claude) 구성이 최고의 CSER를 냄.
 """
 
 import json
-import os
-import subprocess
 
 from amp.core.auto_persona import generate_personas
 from amp.core.kg import KnowledgeGraph
+from amp.core.llm_factory import call_llm
 from amp.core.metrics import calculate_cser
 
 
-def _call_openai(prompt: str, system: str) -> str:
-    """Single LLM call via OpenAI API."""
-    import openai as _openai
-    client = _openai.OpenAI(api_key=os.environ["OPENAI_API_KEY"])
-    response = client.responses.create(
-        model="gpt-5.2",
-        instructions=system,
-        input=prompt,
-    )
-    return response.output_text
+def _get_agent_cfg(config: dict, agent: str) -> tuple[str, str]:
+    """config에서 (provider, model) 반환. 기본값 fallback 포함."""
+    agent_cfg = config.get("agents", {}).get(agent, {})
+    if agent_cfg.get("provider") and agent_cfg.get("model"):
+        return agent_cfg["provider"], agent_cfg["model"]
+    # legacy / fallback
+    if agent == "agent_a":
+        return "openai", config.get("llm", {}).get("model", "gpt-4o")
+    else:
+        return "anthropic_oauth", "claude-sonnet-4-6"
 
 
-def _call_openai_raw(prompt: str) -> str:
-    """Single LLM call via OpenAI API with no system prompt."""
-    import openai as _openai
-    client = _openai.OpenAI(api_key=os.environ["OPENAI_API_KEY"])
-    response = client.responses.create(
-        model="gpt-5.2",
-        input=prompt,
-    )
-    return response.output_text
-
-
-def _extract_insights(query: str, response_a: str, response_b: str, reconciled: str) -> dict:
+def _extract_insights(
+    query: str, response_a: str, response_b: str,
+    reconciled: str, config: dict
+) -> dict:
     """Extract agreement/conflict structure between two agents."""
-    prompt = f"""Two AI agents from different companies analyzed this question independently.
+    provider_a, model_a = _get_agent_cfg(config, "agent_a")
+    label_a = f"{provider_a}/{model_a}"
+    label_b_cfg = _get_agent_cfg(config, "agent_b")
+    label_b = f"{label_b_cfg[0]}/{label_b_cfg[1]}"
+
+    prompt = f"""Two AI agents analyzed this question independently.
 
 Question: {query}
 
-Agent A (OpenAI GPT): {response_a[:800]}
+Agent A ({label_a}): {response_a[:800]}
 
-Agent B (Anthropic Claude): {response_b[:800]}
+Agent B ({label_b}): {response_b[:800]}
 
 Synthesized answer: {reconciled[:400]}
 
 Extract in JSON:
 {{
   "agreements": ["point both agents agreed on", ...],
-  "gpt_only": ["insight only GPT raised", ...],
-  "claude_only": ["insight only Claude raised", ...],
-  "trust_reason": "one sentence: why cross-provider makes this more reliable"
+  "agent_a_only": ["insight only Agent A raised", ...],
+  "agent_b_only": ["insight only Agent B raised", ...],
+  "trust_reason": "one sentence: why this multi-agent approach is more reliable"
 }}
 Return valid JSON only."""
 
     try:
-        result = _call_openai_raw(prompt)
-        return json.loads(result)
+        result = call_llm(prompt, provider=provider_a, model=model_a)
+        data = json.loads(result)
+        # 하위 호환: gpt_only/claude_only 키도 함께 제공
+        data.setdefault("gpt_only", data.get("agent_a_only", []))
+        data.setdefault("claude_only", data.get("agent_b_only", []))
+        return data
     except Exception:
-        return {"agreements": [], "gpt_only": [], "claude_only": [], "trust_reason": ""}
-
-
-def _call_claude(prompt: str, system: str = "") -> str:
-    """Single LLM call via claude CLI subprocess. Free for OAuth users."""
-    oauth_token = os.environ.get("CLAUDE_CODE_OAUTH_TOKEN", "")
-    full_prompt = f"{system}\n\n{prompt}" if system else prompt
-    # Strip Claude Code session vars that block nested invocations
-    env = {k: v for k, v in os.environ.items()
-           if k not in ("CLAUDECODE", "CLAUDE_CODE_ENTRYPOINT", "CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS")}
-    env["CLAUDE_CODE_OAUTH_TOKEN"] = oauth_token
-    result = subprocess.run(
-        ["claude", "-p", "--dangerously-skip-permissions", full_prompt],
-        capture_output=True, text=True, timeout=90,
-        env=env
-    )
-    return result.stdout.strip()
+        return {
+            "agreements": [], "agent_a_only": [], "agent_b_only": [],
+            "gpt_only": [], "claude_only": [], "trust_reason": "",
+        }
 
 
 def run(query: str, context: list[dict], config: dict) -> dict:
@@ -137,11 +128,13 @@ def run(query: str, context: list[dict], config: dict) -> dict:
     agent_a_prompt = f"Analyze this question and provide your expert assessment:{ctx_summary}\n\nQuestion: {query}"
     agent_b_prompt = f"Critically analyze this question from a skeptical perspective:{ctx_summary}\n\nQuestion: {query}"
 
-    # Stage 1: Agent A via OpenAI
-    agent_a_text = _call_openai(agent_a_prompt, agent_a_system)
+    # Stage 1 & 2: config에서 provider/model 읽어서 독립 실행
+    prov_a, mod_a = _get_agent_cfg(config, "agent_a")
+    prov_b, mod_b = _get_agent_cfg(config, "agent_b")
 
-    # Stage 2: Agent B via Claude OAuth (does NOT see A's output)
-    agent_b_text = _call_claude(agent_b_prompt, agent_b_system)
+    agent_a_text = call_llm(agent_a_prompt, system=agent_a_system, provider=prov_a, model=mod_a)
+    # Agent B는 Agent A 출력을 절대 보지 않음 (독립성 불변 조건)
+    agent_b_text = call_llm(agent_b_prompt, system=agent_b_system, provider=prov_b, model=mod_b)
 
     # Stage 3: Reconciler sees both outputs
     cser_data = calculate_cser(agent_a_text, agent_b_text)
@@ -171,15 +164,17 @@ CONFLICTS:
 SYNTHESIZED ANSWER:
 [your final synthesized answer in the same language as the original question]"""
 
-    reconciled_raw = _call_claude(
+    # Reconciler & Verifier: Agent B provider 사용 (A와 다른 관점 유지)
+    reconciled_raw = call_llm(
         reconciler_prompt,
-        "You are a master synthesizer. You receive two independent expert analyses and produce a superior unified answer that captures the best of both perspectives. Answer in the same language as the original question.",
+        system="You are a master synthesizer. You receive two independent expert analyses and produce a superior unified answer that captures the best of both perspectives. Answer in the same language as the original question.",
+        provider=prov_b, model=mod_b,
     )
 
     # Parse reconciler output
     agreements, conflicts, synthesized = _parse_reconciliation(reconciled_raw)
 
-    # Stage 4: Verifier checks logical consistency
+    # Stage 4: Verifier (Agent A provider로 교차 검증)
     verifier_prompt = f"""Check the following answer for logical consistency, completeness, and accuracy.
 
 Original question: {query}
@@ -191,9 +186,10 @@ If the answer is logically consistent and complete, output it as-is with "VERIFI
 If you find issues, output the corrected version with "CORRECTED: " prefix.
 Answer in the same language as the original question."""
 
-    verified_raw = _call_claude(
+    verified_raw = call_llm(
         verifier_prompt,
-        "You are a logical consistency checker. Verify answers for correctness. Answer in the same language as the original question.",
+        system="You are a logical consistency checker. Verify answers for correctness. Answer in the same language as the original question.",
+        provider=prov_a, model=mod_a,
     )
 
     # Extract final answer
@@ -202,8 +198,8 @@ Answer in the same language as the original question."""
     # Persist synthesized answer to KG for future context
     kg.add(content=final_answer, tags=["emergent", "reconciled"])
 
-    # Stage 5: Extract insight metadata (agreements, GPT-only, Claude-only)
-    insights = _extract_insights(query, agent_a_text, agent_b_text, final_answer)
+    # Stage 5: Extract insight metadata
+    insights = _extract_insights(query, agent_a_text, agent_b_text, final_answer, config)
 
     return {
         "answer": final_answer,
@@ -219,6 +215,8 @@ Answer in the same language as the original question."""
         "persona_domain": personas["domain"],
         "persona_diversity": personas["diversity_score"],
         "persona_source": personas["source"],
+        "agent_a_label": f"{prov_a}/{mod_a}",
+        "agent_b_label": f"{prov_b}/{mod_b}",
         "insights": insights,
     }
 
