@@ -143,3 +143,75 @@ def _call_ollama(prompt: str, system: str, model: str, temperature: float | None
     response = httpx.post("http://localhost:11434/api/generate", json=body, timeout=120)
     response.raise_for_status()
     return response.json()["response"]
+
+
+def call_llm_with_tools(
+    prompt: str,
+    system: str = "",
+    provider: str = "openai",
+    model: str = "gpt-4o",
+    temperature: float | None = None,
+    max_turns: int = 6,
+    **kwargs,
+) -> str:
+    """Tool-calling 루프를 포함한 LLM 호출 (OpenAI 전용).
+
+    LLM이 tool_calls를 반환하면 자동으로 실행하고 결과를 다시 LLM에 전달.
+    최대 max_turns 반복 후 최종 텍스트 응답 반환.
+
+    Args:
+        prompt:     User message
+        system:     System prompt
+        provider:   현재 openai만 지원 (anthropic_oauth는 fallback으로 call_llm 사용)
+        model:      OpenAI 모델명
+        temperature: 샘플링 온도
+        max_turns:  최대 tool-call 반복 횟수 (무한루프 방지)
+        **kwargs:   reasoning_effort 등 추가 옵션
+
+    Returns:
+        최종 텍스트 응답
+    """
+    if provider != "openai":
+        # anthropic_oauth 등은 tool-calling 미지원 → 일반 호출로 fallback
+        return call_llm(prompt, system=system, provider=provider, model=model,
+                        temperature=temperature, **kwargs)
+
+    import openai
+    import json
+    from amp.core.tool_runtime import TOOL_SCHEMAS, dispatch
+
+    client = openai.OpenAI(api_key=os.environ["OPENAI_API_KEY"])
+    messages: list[dict] = []
+    if system:
+        messages.append({"role": "system", "content": system})
+    messages.append({"role": "user", "content": prompt})
+
+    req_base: dict = {"model": model, "tools": TOOL_SCHEMAS, "tool_choice": "auto"}
+    if temperature is not None:
+        req_base["temperature"] = temperature
+    if model.startswith("gpt-5") or model.startswith("o"):
+        reasoning_effort = kwargs.get("reasoning_effort") or os.environ.get("OPENAI_REASONING_EFFORT")
+        if reasoning_effort:
+            req_base["reasoning_effort"] = reasoning_effort
+
+    for turn in range(max_turns):
+        resp = client.chat.completions.create(messages=messages, **req_base)
+        msg = resp.choices[0].message
+
+        # tool_calls가 없으면 최종 응답
+        if not msg.tool_calls:
+            return msg.content or ""
+
+        # tool_calls 실행
+        messages.append(msg)  # assistant message (with tool_calls)
+        for tc in msg.tool_calls:
+            args = json.loads(tc.function.arguments)
+            result = dispatch(tc.function.name, args)
+            messages.append({
+                "role": "tool",
+                "tool_call_id": tc.id,
+                "content": result,
+            })
+
+    # max_turns 초과 시 마지막 응답 반환
+    return msg.content or "[tool-calling max_turns 초과]"
