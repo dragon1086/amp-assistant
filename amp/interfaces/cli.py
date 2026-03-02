@@ -30,6 +30,9 @@ from amp.core import emergent, router, solo
 from amp.core import pipeline_engine as pipeline
 from amp.core.kg import KnowledgeGraph
 from amp.core.metrics import format_cser
+from amp.core.user_config import UserConfigStore
+from amp.plugins.registry import _registry as _plugin_registry
+from amp.plugins.skill_loader import discover_external
 
 console = Console()
 
@@ -182,18 +185,30 @@ def _display_result(result: dict):
         console.print(f"[dim]💾 KG에 저장됨 (node #{result['kg_node_id']})[/dim]\n")
 
 
-def _handle_command(cmd: str, config: dict, kg: KnowledgeGraph, session_stats: dict) -> bool:
-    """Handle REPL slash commands. Returns True if handled."""
+def _handle_command(
+    cmd: str,
+    config: dict,
+    kg: KnowledgeGraph,
+    session_stats: dict,
+    user_config_store: "UserConfigStore | None" = None,
+    plugin_reg=None,
+) -> bool:
+    """Handle REPL slash/backslash commands. Returns True if handled."""
     cmd = cmd.strip()
 
     if cmd in ("/help", "/h"):
         console.print(Panel(
             "[bold]REPL Commands:[/bold]\n"
-            "  [cyan]/help[/cyan]       This help\n"
-            "  [cyan]/stats[/cyan]      Show KG and session stats\n"
-            "  [cyan]/mode[/cyan] MODE  Set mode (auto/solo/pipeline/emergent)\n"
-            "  [cyan]/clear[/cyan]      Clear conversation history\n"
-            "  [cyan]/quit[/cyan]       Exit amp",
+            "  [cyan]/help[/cyan]              This help\n"
+            "  [cyan]/stats[/cyan]             Show KG and session stats\n"
+            "  [cyan]/mode[/cyan] MODE         Set mode (auto/solo/pipeline/emergent)\n"
+            "  [cyan]/clear[/cyan]             Clear conversation history\n"
+            "  [cyan]/quit[/cyan]              Exit amp\n"
+            "\n"
+            "[bold]Plugin Commands:[/bold]\n"
+            "  [cyan]\\plugin list[/cyan]        List all plugins and their status\n"
+            "  [cyan]\\plugin on[/cyan] NAME     Enable a plugin\n"
+            "  [cyan]\\plugin off[/cyan] NAME    Disable a plugin",
             title="amp help",
             border_style="dim",
         ))
@@ -237,6 +252,51 @@ def _handle_command(cmd: str, config: dict, kg: KnowledgeGraph, session_stats: d
         console.print("[dim]Goodbye![/dim]")
         sys.exit(0)
 
+    # \plugin commands (backslash prefix to distinguish from regular questions)
+    if cmd.startswith("\\plugin"):
+        parts = cmd.split()
+        sub = parts[1].lower() if len(parts) > 1 else "list"
+
+        if sub == "list":
+            if plugin_reg is None:
+                console.print("[dim]플러그인 없음 (registry not loaded)[/dim]")
+                return True
+            plugins = plugin_reg.all()
+            if not plugins:
+                console.print("[dim]등록된 플러그인 없음[/dim]")
+                return True
+            user_cfg = user_config_store.get(0) if user_config_store else {}
+            lines = ["[bold]🔌 플러그인 목록:[/bold]\n"]
+            for p in plugins:
+                enabled = user_cfg.get("plugins", {}).get(p.name, p.enabled_by_default)
+                status = "[green]✅[/green]" if enabled else "[red]❌[/red]"
+                lines.append(f"  {status} [cyan]{p.name}[/cyan] — {p.description or '-'}")
+            lines.append("\n[dim]토글: \\plugin on <이름>  /  \\plugin off <이름>[/dim]")
+            console.print("\n".join(lines))
+            return True
+
+        if sub in ("on", "off") and len(parts) >= 3:
+            name = parts[2]
+            if plugin_reg is None or plugin_reg.get(name) is None:
+                console.print(f"[red]플러그인을 찾을 수 없습니다: {name}[/red]")
+                console.print("[dim]목록 확인: \\plugin list[/dim]")
+                return True
+            if user_config_store is None:
+                console.print("[red]user_config_store not available[/red]")
+                return True
+            enabled = sub == "on"
+            cfg = user_config_store.get(0)
+            cfg.setdefault("plugins", {})[name] = enabled
+            user_config_store.set(0, cfg)
+            status_text = "활성화" if enabled else "비활성화"
+            console.print(f"[green]✅ {name} 플러그인 {status_text}됨[/green]")
+            return True
+
+        console.print(
+            "[dim]사용법: \\plugin list  /  \\plugin on <이름>  /  \\plugin off <이름>[/dim]"
+        )
+        return True
+
     return False
 
 
@@ -252,6 +312,16 @@ async def _repl(config: dict, kg: KnowledgeGraph, initial_mode: str):
         "context": context,
     }
 
+    # Set up plugin registry and per-user config store (user_id=0 for local single user)
+    user_config_db = Path.home() / ".amp" / "user_config.db"
+    user_config_store = UserConfigStore(user_config_db)
+    plugin_reg = _plugin_registry
+    plugin_reg.discover()
+    try:
+        discover_external(plugin_reg)
+    except Exception:
+        pass
+
     while True:
         try:
             query = Prompt.ask("[bold cyan]>[/bold cyan]", console=console)
@@ -263,9 +333,9 @@ async def _repl(config: dict, kg: KnowledgeGraph, initial_mode: str):
         if not query:
             continue
 
-        # Handle commands
-        if query.startswith("/"):
-            _handle_command(query, config, kg, session_stats)
+        # Handle commands (/ and \ prefixes)
+        if query.startswith("/") or query.startswith("\\"):
+            _handle_command(query, config, kg, session_stats, user_config_store, plugin_reg)
             continue
 
         try:

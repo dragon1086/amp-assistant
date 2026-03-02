@@ -161,6 +161,113 @@ def list_plugins() -> None:
         console.print("[dim]설치된 플러그인 없음[/dim]")
 
 
+@plugin.command("new")
+@click.argument("name")
+def new_plugin(name: str) -> None:
+    """새 플러그인 스캐폴딩 생성.
+
+    NAME 이름의 플러그인 디렉토리를 ~/.amp/plugins/<NAME>/에 만들고
+    SKILL.md와 scripts/main.py 보일러플레이트를 자동 생성합니다.
+    """
+    plugin_dir = EXTERNAL_PLUGINS_DIR / name
+    if plugin_dir.exists():
+        console.print(f"[yellow]이미 존재합니다: {plugin_dir}[/yellow]")
+        console.print(f"[dim]설치하려면: amp plugin install {plugin_dir}[/dim]")
+        sys.exit(1)
+
+    plugin_dir.mkdir(parents=True, exist_ok=True)
+    scripts_dir = plugin_dir / "scripts"
+    scripts_dir.mkdir()
+
+    # SKILL.md 보일러플레이트
+    skill_md = plugin_dir / "SKILL.md"
+    skill_md.write_text(
+        f"""---
+# 플러그인 이름 (amp plugin list에 표시됨)
+name: {name}
+
+# 플러그인 한 줄 설명
+description: {name} 플러그인 설명을 여기에 입력하세요
+
+# true이면 봇 시작 시 자동 활성화
+# false이면 /plugin on {name} 으로 수동 활성화
+enabled_by_default: true
+---
+
+# {name}
+
+이 플러그인은 ...
+
+## 기능
+
+- 기능 1
+- 기능 2
+
+## 사용법
+
+텔레그램에서 메시지를 보내거나 REPL에서 `\\plugin on {name}` 으로 활성화하세요.
+""",
+        encoding="utf-8",
+    )
+
+    # scripts/main.py 보일러플레이트
+    main_py = scripts_dir / "main.py"
+    main_py.write_text(
+        f'''"""
+{name} 플러그인 — amp BasePlugin 구현 예시.
+
+amp 플러그인은 BasePlugin을 상속하고 아래 두 메서드를 구현해야 합니다:
+  - can_handle(update): 이 플러그인이 메시지를 처리할지 여부
+  - handle(update, context, config, user_config): 실제 처리 로직
+"""
+
+from amp.plugins.base import BasePlugin
+
+
+class {name.replace("-", "_").title().replace("_", "")}Plugin(BasePlugin):
+    name = "{name}"
+    description = "{name} 플러그인 설명"
+    enabled_by_default = True
+
+    def can_handle(self, update) -> bool:
+        """이 플러그인이 처리할 메시지 조건을 반환합니다.
+
+        예시: 특정 키워드로 시작하는 메시지만 처리
+        """
+        text = getattr(getattr(update, "message", None), "text", None) or ""
+        return text.lower().startswith("!{name}")
+
+    async def handle(self, update, context, config: dict, user_config: dict) -> str | None:
+        """메시지를 처리하고 응답 문자열을 반환합니다.
+
+        None을 반환하면 amp가 직접 응답한 것으로 간주합니다
+        (예: update.message.reply_text()를 직접 호출한 경우).
+        """
+        text = update.message.text or ""
+        # TODO: 여기에 플러그인 로직을 구현하세요
+        return f"[{name}] 받은 메시지: {{text}}"
+
+    def get_commands(self) -> list[tuple[str, str]]:
+        """이 플러그인이 제공하는 봇 커맨드 목록 (command, description)."""
+        return []
+
+    def get_system_prompt(self) -> str | None:
+        """LLM에 주입할 추가 시스템 프롬프트. None이면 주입 안 함."""
+        return None
+''',
+        encoding="utf-8",
+    )
+
+    console.print(f"[green]✓ 플러그인 생성됨:[/green] {plugin_dir}")
+    console.print()
+    console.print("[bold]다음 단계:[/bold]")
+    console.print(f"  1. [cyan]{plugin_dir / 'SKILL.md'}[/cyan] 에서 메타데이터 수정")
+    console.print(f"  2. [cyan]{main_py}[/cyan] 에서 플러그인 로직 구현")
+    console.print(f"  3. [cyan]amp plugin install {plugin_dir}[/cyan] 로 설치")
+    console.print()
+    console.print("[dim]개발자 가이드: docs/plugin-guide.md[/dim]")
+
+
 @plugin.command("remove")
 @click.argument("name")
 def remove(name: str) -> None:
