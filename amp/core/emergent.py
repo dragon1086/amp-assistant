@@ -20,6 +20,27 @@ from amp.core.llm_factory import call_llm
 from amp.core.metrics import calculate_cser
 
 
+def _is_same_vendor(prov_a: str, prov_b: str) -> bool:
+    """두 provider가 같은 벤더인지 판단.
+
+    같은 벤더 예시:
+      openai + openai → True
+      anthropic_oauth + anthropic → True  (둘 다 Claude)
+      openai + anthropic → False
+    """
+    _openai = {"openai"}
+    _anthropic = {"anthropic", "anthropic_oauth", "claude_oauth"}
+    _local = {"local"}
+
+    def _family(p: str) -> str:
+        if p in _openai:   return "openai"
+        if p in _anthropic: return "anthropic"
+        if p in _local:    return "local"
+        return p  # 알 수 없는 벤더
+
+    return _family(prov_a) == _family(prov_b)
+
+
 def _get_agent_cfg(config: dict, agent: str) -> tuple[str, str]:
     """config에서 (provider, model) 반환. 기본값 fallback 포함."""
     agent_cfg = config.get("agents", {}).get(agent, {})
@@ -101,11 +122,18 @@ def run(query: str, context: list[dict], config: dict) -> dict:
             f"{m['role'].upper()}: {m['content'][:300]}" for m in recent
         )
 
-    # Auto-persona: pull KG context and generate optimal contrasting personas
+    # Stage 1 & 2: config에서 provider/model 읽어서 독립 실행
+    prov_a, mod_a = _get_agent_cfg(config, "agent_a")
+    prov_b, mod_b = _get_agent_cfg(config, "agent_b")
+
+    # 같은 벤더 여부 감지 → 강제 다양성 모드
+    same_vendor = _is_same_vendor(prov_a, prov_b)
+
+    # Auto-persona
     kg = KnowledgeGraph()
     kg_nodes = kg.search(query, top_k=3)
     kg_context = [node["content"] for node in kg_nodes]
-    personas = generate_personas(query, kg_context)
+    personas = generate_personas(query, kg_context, same_vendor=same_vendor)
 
     kg_context_str = ""
     if kg_nodes:
@@ -113,28 +141,56 @@ def run(query: str, context: list[dict], config: dict) -> dict:
             f"- {node['content']}" for node in kg_nodes
         )
 
-    agent_a_system = (
-        f"당신은 {personas['persona_a']}입니다. 독립적으로 분석하세요. "
-        "Answer in the same language as the user's question."
-        + kg_context_str
+    # temperature 설정 (같은 벤더 시 차별화)
+    temp_a = personas.get("temp_a")   # 0.3 (정밀) 또는 None
+    temp_b = personas.get("temp_b")   # 1.1 (창의) 또는 None
+
+    # 시스템 프롬프트 — 같은 벤더는 역할 제약 더 강하게
+    if same_vendor:
+        agent_a_system = (
+            f"당신은 {personas['persona_a']}입니다.\n"
+            "규칙: 반드시 데이터, 수치, 증거에만 근거하세요. "
+            "직관이나 감성적 표현을 배제하고 측정 가능한 결론만 제시하세요. "
+            "Answer in the same language as the user's question."
+            + kg_context_str
+        )
+        agent_b_system = (
+            f"당신은 {personas['persona_b']}입니다.\n"
+            "규칙: 통념에 정면으로 도전하세요. "
+            "Agent A가 말할 법한 '안전한' 결론을 피하고, "
+            "비선형적·파괴적·소수 의견 관점에서 분석하세요. "
+            "상식적인 조언을 반복하면 실패입니다. "
+            "Answer in the same language as the user's question."
+            + kg_context_str
+        )
+    else:
+        agent_a_system = (
+            f"당신은 {personas['persona_a']}입니다. 독립적으로 분석하세요. "
+            "Answer in the same language as the user's question."
+            + kg_context_str
+        )
+        agent_b_system = (
+            f"당신은 {personas['persona_b']}입니다. 독립적으로 분석하세요. "
+            "Answer in the same language as the user's question."
+            + kg_context_str
+        )
+
+    agent_a_prompt = (
+        f"Analyze this question and provide your expert assessment:{ctx_summary}\n\nQuestion: {query}"
+    )
+    agent_b_prompt = (
+        f"Critically analyze this question from your unique perspective:{ctx_summary}\n\nQuestion: {query}"
     )
 
-    agent_b_system = (
-        f"당신은 {personas['persona_b']}입니다. 독립적으로 분석하세요. "
-        "Answer in the same language as the user's question."
-        + kg_context_str
+    agent_a_text = call_llm(
+        agent_a_prompt, system=agent_a_system,
+        provider=prov_a, model=mod_a, temperature=temp_a,
     )
-
-    agent_a_prompt = f"Analyze this question and provide your expert assessment:{ctx_summary}\n\nQuestion: {query}"
-    agent_b_prompt = f"Critically analyze this question from a skeptical perspective:{ctx_summary}\n\nQuestion: {query}"
-
-    # Stage 1 & 2: config에서 provider/model 읽어서 독립 실행
-    prov_a, mod_a = _get_agent_cfg(config, "agent_a")
-    prov_b, mod_b = _get_agent_cfg(config, "agent_b")
-
-    agent_a_text = call_llm(agent_a_prompt, system=agent_a_system, provider=prov_a, model=mod_a)
     # Agent B는 Agent A 출력을 절대 보지 않음 (독립성 불변 조건)
-    agent_b_text = call_llm(agent_b_prompt, system=agent_b_system, provider=prov_b, model=mod_b)
+    agent_b_text = call_llm(
+        agent_b_prompt, system=agent_b_system,
+        provider=prov_b, model=mod_b, temperature=temp_b,
+    )
 
     # Stage 3: Reconciler sees both outputs
     cser_data = calculate_cser(agent_a_text, agent_b_text)
@@ -217,6 +273,7 @@ Answer in the same language as the original question."""
         "persona_source": personas["source"],
         "agent_a_label": f"{prov_a}/{mod_a}",
         "agent_b_label": f"{prov_b}/{mod_b}",
+        "same_vendor": same_vendor,
         "insights": insights,
     }
 

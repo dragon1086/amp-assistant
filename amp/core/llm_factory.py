@@ -16,33 +16,36 @@ def call_llm(
     system: str = "",
     provider: str = "openai",
     model: str = "gpt-4o",
+    temperature: float | None = None,
     **kwargs,
 ) -> str:
     """Universal LLM caller supporting multiple providers.
 
     Args:
-        prompt: User message
-        system: System prompt (optional)
-        provider: One of openai | anthropic_oauth | claude_oauth | anthropic | local
-        model: Model identifier (provider-specific)
-        **kwargs: Extra args forwarded to the underlying caller
+        prompt:      User message
+        system:      System prompt (optional)
+        provider:    openai | anthropic_oauth | claude_oauth | anthropic | local
+        model:       Model identifier (provider-specific)
+        temperature: Sampling temperature (None = provider default).
+                     같은 벤더 다양성 강제 시 A=0.3(정밀), B=1.1(창의) 로 사용.
+        **kwargs:    Extra args forwarded to the underlying caller
 
     Returns:
         Response text string
     """
     if provider == "openai":
-        return _call_openai(prompt, system, model)
+        return _call_openai(prompt, system, model, temperature=temperature)
     elif provider in ("anthropic_oauth", "claude_oauth"):
-        return _call_claude_oauth(prompt, system)
+        return _call_claude_oauth(prompt, system)          # OAuth는 temp 미지원
     elif provider == "anthropic":
-        return _call_anthropic(prompt, system, model)
+        return _call_anthropic(prompt, system, model, temperature=temperature)
     elif provider == "local":
-        return _call_ollama(prompt, system, model)
+        return _call_ollama(prompt, system, model, temperature=temperature)
     else:
         raise ValueError(f"알 수 없는 provider: {provider}")
 
 
-def _call_openai(prompt: str, system: str, model: str) -> str:
+def _call_openai(prompt: str, system: str, model: str, temperature: float | None = None) -> str:
     import openai
 
     client = openai.OpenAI(api_key=os.environ["OPENAI_API_KEY"])
@@ -51,8 +54,15 @@ def _call_openai(prompt: str, system: str, model: str) -> str:
         messages.append({"role": "system", "content": system})
     messages.append({"role": "user", "content": prompt})
 
-    response = client.chat.completions.create(model=model, messages=messages)
-    return response.choices[0].message.content
+    kwargs: dict = {"model": model, "messages": messages}
+    if temperature is not None:
+        kwargs["temperature"] = temperature
+    # gpt-5.x는 max_completion_tokens 사용
+    if model.startswith("gpt-5") or model.startswith("o"):
+        resp = client.chat.completions.create(**kwargs)
+    else:
+        resp = client.chat.completions.create(**kwargs)
+    return resp.choices[0].message.content
 
 
 def _call_claude_oauth(prompt: str, system: str) -> str:
@@ -78,34 +88,36 @@ def _call_claude_oauth(prompt: str, system: str) -> str:
     return result.stdout.strip()
 
 
-def _call_anthropic(prompt: str, system: str, model: str) -> str:
+def _call_anthropic(prompt: str, system: str, model: str, temperature: float | None = None) -> str:
     import anthropic
 
     client = anthropic.Anthropic(api_key=os.environ["ANTHROPIC_API_KEY"])
-    kwargs: dict = {}
+    kw: dict = {}
     if system:
-        kwargs["system"] = system
+        kw["system"] = system
+    if temperature is not None:
+        kw["temperature"] = temperature
 
     response = client.messages.create(
         model=model,
         max_tokens=4096,
         messages=[{"role": "user", "content": prompt}],
-        **kwargs,
+        **kw,
     )
     return response.content[0].text
 
 
-def _call_ollama(prompt: str, system: str, model: str) -> str:
+def _call_ollama(prompt: str, system: str, model: str, temperature: float | None = None) -> str:
     import httpx
 
-    response = httpx.post(
-        "http://localhost:11434/api/generate",
-        json={
-            "model": model,
-            "prompt": f"{system}\n\n{prompt}" if system else prompt,
-            "stream": False,
-        },
-        timeout=120,
-    )
+    body: dict = {
+        "model": model,
+        "prompt": f"{system}\n\n{prompt}" if system else prompt,
+        "stream": False,
+    }
+    if temperature is not None:
+        body["options"] = {"temperature": temperature}
+
+    response = httpx.post("http://localhost:11434/api/generate", json=body, timeout=120)
     response.raise_for_status()
     return response.json()["response"]
