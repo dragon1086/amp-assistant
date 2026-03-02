@@ -92,6 +92,26 @@ def _build_emergent_message(result: dict) -> str:
     lines.append(f"📊 {_escape_md(cser_display)}")
     lines.append("━" * 20)
 
+    # Insight section
+    if result.get("insights"):
+        ins = result["insights"]
+        lines.append("")
+        lines.append("📊 *독창성 & 신뢰도*")
+        if ins.get("agreements"):
+            lines.append("🤝 *두 AI 합의:*")
+            for a in ins["agreements"][:2]:
+                lines.append(f"  • {_escape_md(a)}")
+        if ins.get("gpt_only"):
+            lines.append("🔵 *GPT만 발견:*")
+            for a in ins["gpt_only"][:1]:
+                lines.append(f"  • {_escape_md(a)}")
+        if ins.get("claude_only"):
+            lines.append("🟠 *Claude만 발견:*")
+            for a in ins["claude_only"][:1]:
+                lines.append(f"  • {_escape_md(a)}")
+        if ins.get("trust_reason"):
+            lines.append(f"\n💡 _{_escape_md(ins['trust_reason'])}_")
+
     return "\n".join(lines)
 
 
