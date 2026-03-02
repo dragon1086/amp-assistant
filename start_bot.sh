@@ -11,8 +11,11 @@ if [[ -f venv/bin/activate ]]; then
   source venv/bin/activate
 fi
 
-# .env 파일 로드 (있으면)
-ENV_FILE="${HOME}/.amp/.env"
+# .env 파일 로드 (프로젝트 루트 우선, 없으면 ~/.amp/.env)
+ENV_FILE="$(dirname "$0")/.env"
+if [[ ! -f "$ENV_FILE" ]]; then
+  ENV_FILE="${HOME}/.amp/.env"
+fi
 if [[ -f "$ENV_FILE" ]]; then
   echo "⚙️  .env 로드: $ENV_FILE"
   set -a
