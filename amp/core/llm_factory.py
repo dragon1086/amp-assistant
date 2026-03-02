@@ -34,7 +34,7 @@ def call_llm(
         Response text string
     """
     if provider == "openai":
-        return _call_openai(prompt, system, model, temperature=temperature)
+        return _call_openai(prompt, system, model, temperature=temperature, **kwargs)
     elif provider in ("anthropic_oauth", "claude_oauth"):
         return _call_claude_oauth(prompt, system)          # OAuth는 temp 미지원
     elif provider == "anthropic":
@@ -45,7 +45,7 @@ def call_llm(
         raise ValueError(f"알 수 없는 provider: {provider}")
 
 
-def _call_openai(prompt: str, system: str, model: str, temperature: float | None = None) -> str:
+def _call_openai(prompt: str, system: str, model: str, temperature: float | None = None, **kwargs) -> str:
     import openai
 
     client = openai.OpenAI(api_key=os.environ["OPENAI_API_KEY"])
@@ -54,15 +54,22 @@ def _call_openai(prompt: str, system: str, model: str, temperature: float | None
         messages.append({"role": "system", "content": system})
     messages.append({"role": "user", "content": prompt})
 
-    kwargs: dict = {"model": model, "messages": messages}
+    req: dict = {"model": model, "messages": messages}
     if temperature is not None:
-        kwargs["temperature"] = temperature
+        req["temperature"] = temperature
+
     # gpt-5.x / o-series: reasoning_effort 지원
     if model.startswith("gpt-5") or model.startswith("o"):
-        reasoning_effort = kwargs.pop("reasoning_effort", None) or os.environ.get("OPENAI_REASONING_EFFORT")
+        reasoning_effort = kwargs.get("reasoning_effort") or os.environ.get("OPENAI_REASONING_EFFORT")
         if reasoning_effort:
-            kwargs["reasoning_effort"] = reasoning_effort
-    resp = client.chat.completions.create(**kwargs)
+            req["reasoning_effort"] = reasoning_effort
+
+    # 기타 확장 옵션 전달 (None 제외)
+    for k, v in kwargs.items():
+        if v is not None and k != "reasoning_effort":
+            req[k] = v
+
+    resp = client.chat.completions.create(**req)
     return resp.choices[0].message.content
 
 

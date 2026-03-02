@@ -61,9 +61,17 @@
 - `claude_executor`는 기본 비활성화 (`enabled_by_default=False`)
 - 자연어 자동 인터셉트 비활성화 (명시적 `/claude`만)
 
+## 진행 현황 (업데이트)
+- ✅ GPT-5.x `reasoning_effort` 전달 버그 수정 (`amp/core/llm_factory.py`)
+  - `call_llm(..., **kwargs)`가 OpenAI 호출로 kwargs를 전달하도록 수정
+  - `reasoning_effort`가 실제 request payload에 반영되도록 정리
+- ✅ 적응형 라운드 선택 연결
+  - `amp/core/router.py`: `estimate_complexity`, `select_debate_rounds`, `detect_rounds` 추가
+  - `amp/interfaces/telegram_bot.py`: emergent 호출 시 adaptive rounds 전달
+  - CLI는 기존 `detect_rounds` import 경로와 호환 유지
+- ⏳ tool-calling 실행 루프: 다음 단계
+
 ## 다음 구현 순서
-1. GPT-5.x `reasoning_effort` 지원 (`llm_factory.py`)
-2. 적응형 4라운드 토론 이식 (`emergent.py`)
-3. tool-calling 실행 루프 추가 (`llm_factory.py` + runtime)
-4. Telegram E2E 테스트 (실사용 질문 20개)
-5. 문서/마이그레이션 가이드
+1. tool-calling 실행 루프 추가 (`llm_factory.py` + runtime)
+2. Telegram E2E 테스트 (실사용 질문 20개)
+3. 문서/마이그레이션 가이드

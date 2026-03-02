@@ -401,6 +401,7 @@ class AmpBot:
         status_msg = None
         try:
             effective_mode = router.detect_mode(query, mode)
+            rounds = router.detect_rounds(query, effective_mode)
 
             # Collect system prompts from enabled MarkdownPlugins (SKILL.md 기반)
             run_config = dict(self.config)
@@ -464,7 +465,7 @@ class AmpBot:
                         asyncio.run_coroutine_threadsafe(_edit(), loop)
 
                 result = await asyncio.to_thread(
-                    emergent.run, query, context, run_config, on_progress
+                    emergent.run, query, context, run_config, on_progress, rounds
                 )
             elif effective_mode == "solo":
                 status_msg = await update.message.reply_text("⏳ 분석 중...", parse_mode="HTML")
@@ -502,7 +503,7 @@ class AmpBot:
             # 완료 — status 메시지를 삭제 대신 ✅ 완료 표시로 업데이트
             if status_msg:
                 mode_label = {
-                    "emergent": "🔵🔴 2-agent 분석",
+                    "emergent": "🔵🔴 4-round 토론" if rounds == 4 else "🔵🔴 2-agent 분석",
                     "pipeline": "📋 4단계 파이프라인",
                     "solo": "💬 단일 응답",
                 }.get(effective_mode, "분석")
