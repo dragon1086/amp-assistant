@@ -363,9 +363,7 @@ class AmpBot:
         context = self._get_context(user_id)
         mode = self._get_mode(user_id)
 
-        # Show typing indicator
-        await update.message.chat.send_action(ChatAction.TYPING)
-
+        status_msg = None
         try:
             effective_mode = router.detect_mode(query, mode)
 
@@ -379,14 +377,105 @@ class AmpBot:
             if skill_prompts:
                 run_config.setdefault("amp", {})["skill_prompts"] = skill_prompts
 
-            if effective_mode == "solo":
+            # --- 실시간 진행 상황 메시지 (emergent 모드만) ---
+            status_msg = None
+            if effective_mode == "emergent":
+                status_msg = await update.message.reply_text("⏳ 분석 시작 중\\.\\.\\.", parse_mode="MarkdownV2")
+                loop = asyncio.get_event_loop()
+
+                def on_progress(stage: str, data: dict):
+                    stage_texts = {
+                        "persona_selected": (
+                            f"🎭 *페르소나 선택 완료*\n"
+                            f"🔵 A: {data.get('persona_a','Agent A')}\n"
+                            f"🔴 B: {data.get('persona_b','Agent B')}\n\n"
+                            f"⏳ 두 전문가 분석 중\\.\\.\\."
+                        ),
+                        "agent_a_start": (
+                            f"🔵 *{data.get('persona','Agent A')}* 분석 중\\.\\.\\.\n"
+                            f"🔴 Agent B 대기 중"
+                        ),
+                        "agent_a_done": (
+                            f"🔵 *{data.get('persona','Agent A')}* ✅\n"
+                            f"🔴 Agent B 분석 중\\.\\.\\."
+                        ),
+                        "agent_b_start": (
+                            f"🔵 Agent A ✅\n"
+                            f"🔴 *{data.get('persona','Agent B')}* 분석 중\\.\\.\\."
+                        ),
+                        "agent_b_done": (
+                            f"🔵 Agent A ✅\n"
+                            f"🔴 *{data.get('persona','Agent B')}* ✅\n\n"
+                            f"🟡 두 관점 합성 중\\.\\.\\."
+                        ),
+                        "reconciling": (
+                            f"🔵 Agent A ✅  🔴 Agent B ✅\n\n"
+                            f"🟡 합성 중\\.\\.\\. \\(CSER: {data.get('cser',0):.2f}\\)"
+                        ),
+                        "verifying": (
+                            f"🔵 Agent A ✅  🔴 Agent B ✅  🟡 합성 ✅\n\n"
+                            f"✅ 최종 검증 중\\.\\.\\."
+                        ),
+                    }
+                    text = stage_texts.get(stage)
+                    if text and status_msg:
+                        async def _edit():
+                            try:
+                                await status_msg.edit_text(text, parse_mode="MarkdownV2")
+                            except Exception:
+                                pass
+                        asyncio.run_coroutine_threadsafe(_edit(), loop)
+
+                result = await asyncio.to_thread(
+                    emergent.run, query, context, run_config, on_progress
+                )
+            elif effective_mode == "solo":
+                status_msg = await update.message.reply_text("⏳ 분석 중\\.\\.\\.", parse_mode="MarkdownV2")
                 result = await asyncio.to_thread(solo.run, query, context, run_config)
-            elif effective_mode == "pipeline":
-                result = await asyncio.to_thread(pipeline.run, query, context, run_config)
             else:
-                result = await asyncio.to_thread(emergent.run, query, context, run_config)
+                # pipeline: plan→solve→review→fix 4단계
+                status_msg = await update.message.reply_text(
+                    "⏳ *분석 시작 중\\.\\.\\.*\n📋 1\\. 계획 수립 중",
+                    parse_mode="MarkdownV2"
+                )
+                loop = asyncio.get_event_loop()
+                step = [0]
+
+                async def _update_pipeline_status():
+                    steps = [
+                        "⏳ *분석 시작 중\\.\\.\\.*\n📋 1\\. 계획 수립 중",
+                        "📋 계획 ✅\n🔧 2\\. 해결 중\\.\\.\\.",
+                        "🔧 해결 ✅\n🔍 3\\. 검토 중\\.\\.\\.",
+                        "🔍 검토 ✅\n✨ 4\\. 최종 수정 중\\.\\.\\.",
+                    ]
+                    for i in range(1, len(steps)):
+                        await asyncio.sleep(8)
+                        if status_msg and step[0] < i:
+                            step[0] = i
+                            try:
+                                await status_msg.edit_text(steps[i], parse_mode="MarkdownV2")
+                            except Exception:
+                                pass
+
+                asyncio.ensure_future(_update_pipeline_status())
+                result = await asyncio.to_thread(pipeline.run, query, context, run_config)
 
             result["effective_mode"] = effective_mode
+
+            # 완료 — status 메시지를 삭제 대신 ✅ 완료 표시로 업데이트
+            if status_msg:
+                mode_label = {
+                    "emergent": "🔵🔴 2-agent 분석",
+                    "pipeline": "📋 4단계 파이프라인",
+                    "solo": "💬 단일 응답",
+                }.get(effective_mode, "분석")
+                try:
+                    await status_msg.edit_text(
+                        f"✅ *{mode_label} 완료*",
+                        parse_mode="MarkdownV2"
+                    )
+                except Exception:
+                    pass
 
             # Auto-save emergent insights to KG
             if effective_mode == "emergent" and result.get("answer"):
@@ -429,9 +518,14 @@ class AmpBot:
 
         except Exception as e:
             logger.error(f"Error processing message: {e}", exc_info=True)
-            await update.message.reply_text(
-                f"❌ 오류가 발생했습니다: {str(e)[:200]}"
-            )
+            err_text = f"❌ 오류: {str(e)[:200]}"
+            if status_msg:
+                try:
+                    await status_msg.edit_text(err_text)
+                except Exception:
+                    await update.message.reply_text(err_text)
+            else:
+                await update.message.reply_text(err_text)
 
     async def feedback_handler(self, update: Update, ctx: ContextTypes.DEFAULT_TYPE):
         """Handle thumbs up/down feedback and save to KG as an edge."""

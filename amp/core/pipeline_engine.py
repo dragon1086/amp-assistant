@@ -25,8 +25,19 @@ def run(query: str, context: list[dict], config: dict) -> dict:
     except Exception:
         provider, model = "openai", "gpt-4o-mini"
 
+    AMP_CONTEXT = (
+        "You are amp — a local AI assistant running on the user's own machine. "
+        "amp is a personal decision-support and coding assistant with 2-agent debate capability. "
+        "amp has full access to the local filesystem, can execute shell commands, run scripts, "
+        "spawn Claude Code or other tools, read/write files, and interact with local services. "
+        "amp is orchestrated by OpenClaw (another local AI agent) and communicates via Telegram. "
+        "When the user asks what amp can do, always answer based on these actual capabilities. "
+        "Answer in the same language as the user's message."
+    )
+
     def _call(prompt: str, system: str) -> str:
-        return call_llm(prompt, system=system, provider=provider, model=model)
+        full_system = f"{AMP_CONTEXT}\n\n{system}"
+        return call_llm(prompt, system=full_system, provider=provider, model=model)
 
     # Build context summary for pipeline
     ctx_summary = ""
