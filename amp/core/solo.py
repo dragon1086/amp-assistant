@@ -31,17 +31,25 @@ def run(query: str, context: list[dict], config: dict) -> dict:
 
     prompt = f"{ctx_summary}\n\nUser: {query}" if ctx_summary else query
 
-    # config에서 provider/model 읽기 (agent_a 기준, fallback: openai)
+    # config에서 provider/model 읽기 (agent_a 기준 — 기본값: anthropic_oauth)
     try:
         provider, model = _get_agent_cfg(config, "agent_a")
     except Exception:
-        provider, model = "openai", "gpt-4o-mini"
+        provider, model = "anthropic_oauth", "claude-sonnet-4-6"
 
-    answer = call_llm(prompt, system=system, provider=provider, model=model)
+    # OAuth fallback: 미로그인 시 openai로 자동 전환
+    from amp.core.llm_factory import OAuthNotAvailableError
+    fallback_model = config.get("llm", {}).get("model", "gpt-4o-mini")
+    try:
+        answer = call_llm(prompt, system=system, provider=provider, model=model)
+        used_provider = provider
+    except OAuthNotAvailableError:
+        answer = call_llm(prompt, system=system, provider="openai", model=fallback_model)
+        used_provider = "openai"
 
     return {
         "answer": answer,
         "mode": "solo",
-        "model": f"{provider}/{model}",
+        "model": f"{used_provider}/{model}",
         "confidence": None,
     }

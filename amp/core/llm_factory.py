@@ -65,8 +65,15 @@ def _call_openai(prompt: str, system: str, model: str, temperature: float | None
     return resp.choices[0].message.content
 
 
+class OAuthNotAvailableError(Exception):
+    """Claude OAuth CLI not logged in or unavailable."""
+
+
 def _call_claude_oauth(prompt: str, system: str) -> str:
-    """Call Claude via claude CLI subprocess (free for OAuth users)."""
+    """Call Claude via claude CLI subprocess (free for OAuth users).
+
+    Raises OAuthNotAvailableError if not logged in, so callers can fallback.
+    """
     oauth_token = os.environ.get("CLAUDE_CODE_OAUTH_TOKEN", "")
     full_prompt = f"{system}\n\n{prompt}" if system else prompt
 
@@ -85,7 +92,14 @@ def _call_claude_oauth(prompt: str, system: str) -> str:
         timeout=90,
         env=env,
     )
-    return result.stdout.strip()
+    output = result.stdout.strip()
+
+    # 미로그인 / 인증 실패 감지
+    _auth_errors = ("not logged in", "please run /login", "authentication", "unauthorized")
+    if any(e in output.lower() for e in _auth_errors) or result.returncode != 0:
+        raise OAuthNotAvailableError(f"Claude OAuth unavailable: {output[:120]}")
+
+    return output
 
 
 def _call_anthropic(prompt: str, system: str, model: str, temperature: float | None = None) -> str:

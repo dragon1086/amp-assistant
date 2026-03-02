@@ -46,12 +46,12 @@ def _get_agent_cfg(config: dict, agent: str) -> tuple[str, str]:
     agent_cfg = config.get("agents", {}).get(agent, {})
     if agent_cfg.get("provider") and agent_cfg.get("model"):
         return agent_cfg["provider"], agent_cfg["model"]
-    # legacy / fallback
+    # 기본값: Agent A = anthropic_oauth (Claude, 무료), Agent B = openai (크로스 벤더)
+    # 사용자가 config에서 agents.agent_a / agents.agent_b 로 자유롭게 커스터마이징 가능
     if agent == "agent_a":
-        return "openai", config.get("llm", {}).get("model", "gpt-4o")
+        return "anthropic_oauth", "claude-sonnet-4-6"
     else:
-        # agent_b: 명시 설정 없으면 openai로 fallback (anthropic_oauth 미인증 환경 대응)
-        return "openai", config.get("llm", {}).get("model", "gpt-4o")
+        return "openai", config.get("llm", {}).get("model", "gpt-4o-mini")
 
 
 def _extract_insights(
@@ -183,15 +183,28 @@ def run(query: str, context: list[dict], config: dict) -> dict:
         f"Critically analyze this question from your unique perspective:{ctx_summary}\n\nQuestion: {query}"
     )
 
-    agent_a_text = call_llm(
-        agent_a_prompt, system=agent_a_system,
-        provider=prov_a, model=mod_a, temperature=temp_a,
+    # OAuth fallback: anthropic_oauth 실패 시 openai로 자동 전환
+    fallback_model = config.get("llm", {}).get("model", "gpt-4o-mini")
+
+    def _call_with_fallback(prompt: str, system: str, provider: str, model: str, temperature=None) -> tuple[str, str]:
+        """LLM 호출. OAuth 미인증 시 openai로 fallback. (응답, 실제사용provider) 반환."""
+        from amp.core.llm_factory import OAuthNotAvailableError
+        try:
+            return call_llm(prompt, system=system, provider=provider, model=model, temperature=temperature), provider
+        except OAuthNotAvailableError:
+            return call_llm(prompt, system=system, provider="openai", model=fallback_model, temperature=temperature), "openai"
+
+    agent_a_text, prov_a_actual = _call_with_fallback(
+        agent_a_prompt, agent_a_system, prov_a, mod_a, temp_a
     )
     # Agent B는 Agent A 출력을 절대 보지 않음 (독립성 불변 조건)
-    agent_b_text = call_llm(
-        agent_b_prompt, system=agent_b_system,
-        provider=prov_b, model=mod_b, temperature=temp_b,
+    agent_b_text, prov_b_actual = _call_with_fallback(
+        agent_b_prompt, agent_b_system, prov_b, mod_b, temp_b
     )
+
+    # fallback 발생 시 same_vendor 재계산 (다양성 로직에 반영)
+    if prov_a_actual != prov_a or prov_b_actual != prov_b:
+        same_vendor = _is_same_vendor(prov_a_actual, prov_b_actual)
 
     # Stage 3: Reconciler sees both outputs
     cser_data = calculate_cser(agent_a_text, agent_b_text)
