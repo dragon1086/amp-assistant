@@ -30,11 +30,28 @@ def _resolve_env_vars(value: Any) -> Any:
     return value
 
 
+def _load_dot_env(env_path: Path) -> None:
+    """~/.amp/.env 파일의 환경변수를 os.environ에 로드 (없으면 무시)."""
+    if not env_path.exists():
+        return
+    for line in env_path.read_text().splitlines():
+        line = line.strip()
+        if not line or line.startswith("#") or "=" not in line:
+            continue
+        key, _, val = line.partition("=")
+        key = key.strip()
+        val = val.strip()
+        if key and key not in os.environ:  # 이미 있는 값은 덮어쓰지 않음
+            os.environ[key] = val
+
+
 def load_config(config_path: Path | None = None) -> dict:
     """Load configuration from file and environment variables.
 
-    Priority: env vars > config file > defaults
+    Priority: env vars > ~/.amp/.env > config file > defaults
     """
+    # ~/.amp/.env 자동 로드 (amp setup이 생성)
+    _load_dot_env(AMP_DIR / ".env")
     defaults = {
         "llm": {
             "provider": "openai",
