@@ -125,11 +125,11 @@ async def _process_query(
 
     with console.status(f"[dim]Processing ({effective_mode} mode)...[/dim]", spinner="dots"):
         if effective_mode == "solo":
-            result = await solo.run(query, context, config)
+            result = await asyncio.to_thread(solo.run, query, context, config)
         elif effective_mode == "pipeline":
-            result = await pipeline.run(query, context, config)
+            result = await asyncio.to_thread(pipeline.run, query, context, config)
         else:  # emergent
-            result = await emergent.run(query, context, config)
+            result = await asyncio.to_thread(emergent.run, query, context, config)
 
     # Auto-save emergent insights to KG
     if effective_mode == "emergent" and result.get("answer"):
