@@ -104,6 +104,52 @@ def detect_mode(query: str, default_mode: str = "auto") -> str:
     return "solo"
 
 
+def estimate_complexity(query: str) -> float:
+    """Estimate query complexity in [0,1] for routing/debate depth.
+
+    Heuristic only (fast, deterministic):
+    - emergent keywords, comparison/decision words increase score
+    - pipeline keywords moderately increase score
+    - longer queries increase score
+    """
+    q = (query or "").lower().strip()
+    if not q:
+        return 0.0
+
+    score = 0.1
+    words = len(q.split())
+
+    emergent_hits = sum(1 for k in EMERGENT_KEYWORDS if k in q)
+    pipeline_hits = sum(1 for k in PIPELINE_KEYWORDS if k in q)
+
+    score += min(0.45, emergent_hits * 0.12)
+    score += min(0.20, pipeline_hits * 0.05)
+
+    if words > 8:
+        score += 0.12
+    if words > 16:
+        score += 0.12
+    if words > 28:
+        score += 0.10
+
+    return max(0.0, min(1.0, score))
+
+
+def select_debate_rounds(query: str, threshold: float = 0.7) -> int:
+    """Choose debate rounds for emergent mode (2 or 4)."""
+    return 4 if estimate_complexity(query) >= threshold else 2
+
+
+def detect_rounds(query: str, effective_mode: str) -> int:
+    """Backward-compatible API used by CLI/Telegram.
+
+    Returns 2 for non-emergent modes, otherwise adaptive 2/4.
+    """
+    if effective_mode != "emergent":
+        return 2
+    return select_debate_rounds(query)
+
+
 def describe_mode(mode: str) -> str:
     """Human-readable description of selected mode."""
     descriptions = {
@@ -112,3 +158,33 @@ def describe_mode(mode: str) -> str:
         "emergent": "emergent (2-agent 독립 분석)",
     }
     return descriptions.get(mode, mode)
+
+
+# Patterns that warrant a deeper 4-round sequential debate
+_DEBATE_4R_KEYWORDS = [
+    "vs", " vs ", "비교", "어느 게 낫", "뭐가 나아", "뭐가 좋",
+    "which is better", "대결", "찬반", "pros and cons", "장단점",
+    "논쟁", "반박", "critique", "devil's advocate",
+    "심층 분석", "deep dive", "철저히",
+]
+
+
+def detect_rounds(query: str, mode: str = "auto") -> int:
+    """Determine how many debate rounds to run for emergent mode.
+
+    Combines keyword matching (fast, precise) and complexity scoring.
+
+    Returns:
+        2 — independent analysis + reconcile + verify (default, faster)
+        4 — sequential debate: A→B-rebuts→A-counters→B-recounters + synthesis
+    """
+    if mode not in ("auto", "emergent"):
+        return 2
+
+    q = query.lower()
+    for kw in _DEBATE_4R_KEYWORDS:
+        if kw in q:
+            return 4
+
+    # Score-based fallback (handles nuanced complex queries)
+    return select_debate_rounds(query)
