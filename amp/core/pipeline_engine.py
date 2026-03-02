@@ -2,10 +2,10 @@
 
 4-stage LLM pipeline for complex structured tasks like code generation,
 document creation, and step-by-step problem solving.
-All stages use Claude OAuth (free).
 """
 
-from amp.core.emergent import _call_claude
+from amp.core.llm_factory import call_llm
+from amp.core.emergent import _get_agent_cfg
 
 
 def run(query: str, context: list[dict], config: dict) -> dict:
@@ -19,6 +19,15 @@ def run(query: str, context: list[dict], config: dict) -> dict:
     Returns:
         dict with keys: answer, mode, steps
     """
+    # config에서 provider/model 읽기 (agent_a 기준, fallback: openai)
+    try:
+        provider, model = _get_agent_cfg(config, "agent_a")
+    except Exception:
+        provider, model = "openai", "gpt-4o-mini"
+
+    def _call(prompt: str, system: str) -> str:
+        return call_llm(prompt, system=system, provider=provider, model=model)
+
     # Build context summary for pipeline
     ctx_summary = ""
     if context:
@@ -31,28 +40,28 @@ def run(query: str, context: list[dict], config: dict) -> dict:
     steps = {}
 
     # Stage 1: Planner
-    plan = _call_claude(
+    plan = _call(
         f"Break this task into detailed steps:{ctx_summary}\n\nTask: {query}",
         system="You are a precise task planner. Break complex tasks into clear, numbered steps. Be specific and actionable.",
     )
     steps["plan"] = plan
 
     # Stage 2: Solver
-    solution = _call_claude(
+    solution = _call(
         f"Execute this plan to solve the original task.\n\nOriginal task: {query}\n\nPlan:\n{plan}\n\nProvide the complete solution:",
         system="You are an expert problem solver. Execute the given plan thoroughly and completely. Answer in the same language as the task.",
     )
     steps["solution"] = solution
 
     # Stage 3: Reviewer
-    review = _call_claude(
+    review = _call(
         f"Review this solution for flaws, errors, or gaps.\n\nOriginal task: {query}\n\nSolution:\n{solution}\n\nList specific issues found:",
         system="You are a rigorous code and solution reviewer. Find all flaws, gaps, errors, and improvements. Be specific.",
     )
     steps["review"] = review
 
     # Stage 4: Fixer
-    fixed = _call_claude(
+    fixed = _call(
         f"Fix the solution based on review feedback. Produce the final, corrected version.\n\nOriginal task: {query}\n\nOriginal solution:\n{solution}\n\nIssues to fix:\n{review}\n\nFinal corrected solution:",
         system="You are an expert who produces polished final solutions. Fix all identified issues and deliver a complete, correct answer. Answer in the same language as the original task.",
     )
