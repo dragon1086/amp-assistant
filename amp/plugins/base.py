@@ -26,6 +26,13 @@ class BasePlugin(ABC):
         """Return list of (command, description) tuples this plugin provides."""
         return []
 
+    def get_system_prompt(self) -> str | None:
+        """Return additional system prompt text to inject, or None.
+
+        마크다운 전용 플러그인(Python 파일 없음)은 이 메서드로 내용을 주입한다.
+        """
+        return None
+
     def setup(self, app, config: dict | None = None) -> None:
         """Called once during bot setup. Register handlers here if needed."""
         pass
