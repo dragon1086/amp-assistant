@@ -2,13 +2,18 @@
 # Copy this to ~/.amp/config.yaml and fill in your values
 # Environment variables override these settings
 
+llm:
+  provider: anthropic_oauth  # primary: Claude OAuth (free via Claude Code)
+  openai_model: gpt-5.2      # only used for Emergent Agent A (cross-provider diversity)
+  embedding_model: text-embedding-3-small  # OpenAI only — no Claude equivalent
+
 agents:
   agent_a:
     provider: openai
-    model: gpt-5.2
+    model: gpt-5.2           # kept for cross-provider diversity (the product's value)
   agent_b:
-    provider: anthropic
-    model: claude-sonnet-4-6
+    provider: anthropic_oauth
+    model: claude-oauth      # free via Claude Code OAuth
 
 telegram:
   # Telegram bot token from @BotFather

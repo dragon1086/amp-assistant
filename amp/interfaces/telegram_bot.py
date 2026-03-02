@@ -13,10 +13,11 @@ import asyncio
 import logging
 from pathlib import Path
 
-from telegram import Update
+from telegram import InlineKeyboardButton, InlineKeyboardMarkup, Update
 from telegram.constants import ChatAction
 from telegram.ext import (
     Application,
+    CallbackQueryHandler,
     CommandHandler,
     ContextTypes,
     MessageHandler,
@@ -194,11 +195,20 @@ class AmpBot:
             # Format response
             if effective_mode == "emergent":
                 reply = _build_emergent_message(result)
+                # Attach feedback keyboard if we have a KG node
+                reply_markup = None
+                if result.get("kg_node_id"):
+                    node_id = result["kg_node_id"]
+                    keyboard = [[
+                        InlineKeyboardButton("👍 도움됐어", callback_data=f"feedback_good_{node_id}"),
+                        InlineKeyboardButton("👎 별로야", callback_data=f"feedback_bad_{node_id}"),
+                    ]]
+                    reply_markup = InlineKeyboardMarkup(keyboard)
                 try:
-                    await update.message.reply_text(reply, parse_mode="MarkdownV2")
+                    await update.message.reply_text(reply, parse_mode="MarkdownV2", reply_markup=reply_markup)
                 except Exception:
                     # Fallback without markdown if parsing fails
-                    await update.message.reply_text(result["answer"])
+                    await update.message.reply_text(result["answer"], reply_markup=reply_markup)
             else:
                 label = "pipeline" if effective_mode == "pipeline" else "solo"
                 reply = f"*amp ({label}):*\n\n{result['answer']}"
@@ -206,11 +216,6 @@ class AmpBot:
                     await update.message.reply_text(reply, parse_mode="Markdown")
                 except Exception:
                     await update.message.reply_text(result["answer"])
-
-            if "kg_node_id" in result:
-                await update.message.reply_text(
-                    f"💾 KG에 저장됨 (node #{result['kg_node_id']})"
-                )
 
             # Update context
             context.append({"role": "user", "content": query})
@@ -223,6 +228,29 @@ class AmpBot:
             await update.message.reply_text(
                 f"❌ 오류가 발생했습니다: {str(e)[:200]}"
             )
+
+    async def feedback_handler(self, update: Update, ctx: ContextTypes.DEFAULT_TYPE):
+        """Handle thumbs up/down feedback and save to KG as an edge."""
+        query = update.callback_query
+        await query.answer()
+        data = query.data  # "feedback_good_abc123" or "feedback_bad_abc123"
+
+        if data.startswith("feedback_good_"):
+            rating = "positive"
+            node_id = data[len("feedback_good_"):]
+            weight = 1.0
+        else:
+            rating = "negative"
+            node_id = data[len("feedback_bad_"):]
+            weight = -1.0
+
+        try:
+            self.kg.relate(node_id, node_id, f"user_feedback_{rating}", weight)
+            await query.edit_message_reply_markup(reply_markup=None)
+            await query.message.reply_text("피드백 저장됐어\\! KG에 반영됐어 🧠", parse_mode="MarkdownV2")
+        except Exception as e:
+            logger.error(f"Feedback save failed: {e}", exc_info=True)
+            await query.message.reply_text("피드백 저장 실패 😅")
 
 
 def run_bot(config: dict | None = None):
@@ -248,6 +276,7 @@ def run_bot(config: dict | None = None):
     app.add_handler(CommandHandler("mode", bot.cmd_mode))
     app.add_handler(CommandHandler("stats", bot.cmd_stats))
     app.add_handler(CommandHandler("clear", bot.cmd_clear))
+    app.add_handler(CallbackQueryHandler(bot.feedback_handler, pattern="^feedback_"))
     app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, bot.handle_message))
 
     logging.basicConfig(level=logging.INFO)

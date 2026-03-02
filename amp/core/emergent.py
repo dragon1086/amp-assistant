@@ -28,17 +28,17 @@ def _call_openai(prompt: str, system: str) -> str:
     return response.output_text
 
 
-def _call_anthropic(prompt: str, system: str) -> str:
-    """Single LLM call via claude CLI subprocess."""
+def _call_claude(prompt: str, system: str = "") -> str:
+    """Single LLM call via claude CLI subprocess. Free for OAuth users."""
     oauth_token = os.environ.get("CLAUDE_CODE_OAUTH_TOKEN", "")
-    full_prompt = f"{system}\n\n{prompt}"
+    full_prompt = f"{system}\n\n{prompt}" if system else prompt
     # Strip Claude Code session vars that block nested invocations
     env = {k: v for k, v in os.environ.items()
            if k not in ("CLAUDECODE", "CLAUDE_CODE_ENTRYPOINT", "CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS")}
     env["CLAUDE_CODE_OAUTH_TOKEN"] = oauth_token
     result = subprocess.run(
         ["claude", "-p", "--dangerously-skip-permissions", full_prompt],
-        capture_output=True, text=True, timeout=60,
+        capture_output=True, text=True, timeout=90,
         env=env
     )
     return result.stdout.strip()
@@ -100,8 +100,8 @@ def run(query: str, context: list[dict], config: dict) -> dict:
     # Stage 1: Agent A via OpenAI
     agent_a_text = _call_openai(agent_a_prompt, agent_a_system)
 
-    # Stage 2: Agent B via Anthropic (does NOT see A's output)
-    agent_b_text = _call_anthropic(agent_b_prompt, agent_b_system)
+    # Stage 2: Agent B via Claude OAuth (does NOT see A's output)
+    agent_b_text = _call_claude(agent_b_prompt, agent_b_system)
 
     # Stage 3: Reconciler sees both outputs
     cser_data = calculate_cser(agent_a_text, agent_b_text)
@@ -131,7 +131,7 @@ CONFLICTS:
 SYNTHESIZED ANSWER:
 [your final synthesized answer in the same language as the original question]"""
 
-    reconciled_raw = _call_openai(
+    reconciled_raw = _call_claude(
         reconciler_prompt,
         "You are a master synthesizer. You receive two independent expert analyses and produce a superior unified answer that captures the best of both perspectives. Answer in the same language as the original question.",
     )
@@ -151,7 +151,7 @@ If the answer is logically consistent and complete, output it as-is with "VERIFI
 If you find issues, output the corrected version with "CORRECTED: " prefix.
 Answer in the same language as the original question."""
 
-    verified_raw = _call_openai(
+    verified_raw = _call_claude(
         verifier_prompt,
         "You are a logical consistency checker. Verify answers for correctness. Answer in the same language as the original question.",
     )

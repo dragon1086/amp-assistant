@@ -92,13 +92,13 @@ def generate_personas(query: str, kg_context: list = None) -> dict:
 
 
 def _dynamic_generate(query: str, kg_context: list, client: OpenAI) -> tuple:
-    """Fallback: LLM generates custom personas for unusual queries."""
+    """Fallback: LLM generates custom personas for unusual queries via Claude OAuth."""
+    from amp.core.emergent import _call_claude
+
     context_str = "\n".join([f"- {c}" for c in kg_context[:3]]) if kg_context else "없음"
 
-    response = client.responses.create(
-        model="gpt-5.2",
-        instructions="You generate contrasting expert personas for dual-perspective analysis. Return valid JSON only.",
-        input=f"""Query: {query}
+    result = _call_claude(
+        f"""Query: {query}
 Past context: {context_str}
 
 Generate 2 contrasting expert personas. Requirements:
@@ -106,10 +106,11 @@ Generate 2 contrasting expert personas. Requirements:
 - Domain-appropriate expertise
 - Each catches blind spots the other misses
 Return: {{"persona_a": "...", "persona_b": "..."}}""",
+        system="You generate contrasting expert personas for dual-perspective analysis. Return valid JSON only.",
     )
 
     try:
-        data = json.loads(response.output_text)
+        data = json.loads(result)
         return data["persona_a"], data["persona_b"]
     except Exception:
         return PERSONA_PRESETS["default"]
