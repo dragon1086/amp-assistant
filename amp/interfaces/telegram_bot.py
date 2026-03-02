@@ -477,8 +477,14 @@ def run_bot(config: dict | None = None):
 
     bot = AmpBot(config, kg)
 
-    # Discover plugins before building the app
+    # Discover built-in plugins
     bot.plugin_registry.discover()
+    # Discover external plugins from ~/.amp/plugins/ (SKILL.md or .py)
+    try:
+        from amp.plugins.skill_loader import discover_external
+        discover_external(bot.plugin_registry)
+    except Exception as e:
+        logger.warning(f"외부 플러그인 로딩 실패 (무시): {e}")
 
     app = Application.builder().token(token).build()
 

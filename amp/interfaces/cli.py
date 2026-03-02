@@ -24,6 +24,7 @@ from rich.prompt import Prompt
 from rich.rule import Rule
 from rich.text import Text
 
+from amp.cli.plugin_cmd import plugin
 from amp.config import ensure_amp_dir, load_config, save_config, DEFAULT_CONFIG_PATH
 from amp.core import emergent, router, solo
 from amp.core import pipeline_engine as pipeline
@@ -405,6 +406,7 @@ def cli(ctx, query, mode, config_path):
 
 cli.add_command(setup)
 cli.add_command(main, name="ask")
+cli.add_command(plugin)
 
 
 if __name__ == "__main__":
