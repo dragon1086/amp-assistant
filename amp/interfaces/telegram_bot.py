@@ -382,12 +382,22 @@ class AmpBot:
         try:
             effective_mode = router.detect_mode(query, mode)
 
+            # Collect system prompts from enabled MarkdownPlugins (SKILL.md 기반)
+            run_config = dict(self.config)
+            skill_prompts = []
+            for plugin in self.plugin_registry.get_enabled(user_config):
+                sp = plugin.get_system_prompt() if hasattr(plugin, "get_system_prompt") else None
+                if sp:
+                    skill_prompts.append(sp)
+            if skill_prompts:
+                run_config.setdefault("amp", {})["skill_prompts"] = skill_prompts
+
             if effective_mode == "solo":
-                result = await asyncio.to_thread(solo.run, query, context, self.config)
+                result = await asyncio.to_thread(solo.run, query, context, run_config)
             elif effective_mode == "pipeline":
-                result = await asyncio.to_thread(pipeline.run, query, context, self.config)
+                result = await asyncio.to_thread(pipeline.run, query, context, run_config)
             else:
-                result = await asyncio.to_thread(emergent.run, query, context, self.config)
+                result = await asyncio.to_thread(emergent.run, query, context, run_config)
 
             result["effective_mode"] = effective_mode
 

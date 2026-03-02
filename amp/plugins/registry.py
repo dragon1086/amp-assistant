@@ -13,11 +13,11 @@ class PluginRegistry:
         self._plugins[plugin.name] = plugin
 
     def discover(self) -> None:
-        """Auto-discover plugins in amp/plugins/ directory."""
+        """Auto-discover plugins in amp/plugins/ directory and ~/.amp/plugins/."""
         import amp.plugins as pkg
 
         for _, module_name, _ in pkgutil.iter_modules(pkg.__path__):
-            if module_name in ("base", "registry"):
+            if module_name in ("base", "registry", "skill_loader"):
                 continue
             try:
                 module = importlib.import_module(f"amp.plugins.{module_name}")
@@ -32,6 +32,10 @@ class PluginRegistry:
                         self.register(instance)
             except Exception as e:
                 print(f"[PluginRegistry] Failed to load plugin {module_name}: {e}")
+
+        # 외부 플러그인 (~/.amp/plugins/) 자동 스캔
+        from amp.plugins.skill_loader import discover_external
+        discover_external(self)
 
     def get_enabled(self, user_config: dict) -> list[BasePlugin]:
         """Get plugins enabled for this user."""

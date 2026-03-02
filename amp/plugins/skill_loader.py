@@ -32,6 +32,33 @@ _FRONTMATTER_RE = re.compile(r"^---\s*\n(.*?)\n---", re.DOTALL)
 EXTERNAL_PLUGINS_DIR = Path.home() / ".amp" / "plugins"
 
 
+class MarkdownPlugin(BasePlugin):
+    """SKILL.md만 있고 Python 파일이 없는 경우, 마크다운 본문을 시스템 프롬프트로 주입하는 플러그인."""
+
+    def __init__(
+        self,
+        name: str,
+        description: str,
+        system_prompt: str,
+        enabled_by_default: bool = True,
+    ) -> None:
+        self.name = name
+        self.description = description
+        self._system_prompt = system_prompt
+        self.enabled_by_default = enabled_by_default
+
+    def can_handle(self, update) -> bool:
+        """마크다운 플러그인은 메시지를 직접 처리하지 않는다."""
+        return False
+
+    async def handle(self, update, context, config: dict, user_config: dict) -> str | None:
+        return None
+
+    def get_system_prompt(self) -> str:
+        """시스템 프롬프트로 주입할 마크다운 내용."""
+        return self._system_prompt
+
+
 def parse_skill_md(content: str) -> dict[str, Any]:
     """SKILL.md YAML frontmatter 파싱.
 
@@ -107,6 +134,17 @@ def load_skill_from_dir(skill_dir: Path) -> BasePlugin | None:
             plugin = _load_plugin_from_py(py_file, meta)
             if plugin is not None:
                 return plugin
+
+    # Python 파일 없음 + SKILL.md 있음 → 마크다운 본문을 시스템 프롬프트로 주입
+    if skill_md.exists():
+        raw = skill_md.read_text(encoding="utf-8")
+        # frontmatter 제거 후 본문만 추출
+        body = _FRONTMATTER_RE.sub("", raw).strip()
+        if body:
+            name = str(meta.get("name") or skill_dir.name)
+            desc = str(meta.get("description") or "")
+            enabled = bool(meta.get("enabled_by_default", True))
+            return MarkdownPlugin(name=name, description=desc, system_prompt=body, enabled_by_default=enabled)
 
     return None
 
