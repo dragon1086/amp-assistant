@@ -1,6 +1,6 @@
 """Solo mode - single LLM call for simple queries."""
 
-from amp.core.llm_factory import call_llm
+from amp.core.llm_factory import call_llm, call_llm_with_tools
 from amp.core.emergent import _get_agent_cfg
 
 
@@ -45,10 +45,10 @@ def run(query: str, context: list[dict], config: dict) -> dict:
     from amp.core.llm_factory import OAuthNotAvailableError
     fallback_model = config.get("llm", {}).get("model", "gpt-4o-mini")
     try:
-        answer = call_llm(prompt, system=system, provider=provider, model=model)
+        answer = call_llm_with_tools(prompt, system=system, provider=provider, model=model)
         used_provider = provider
     except OAuthNotAvailableError:
-        answer = call_llm(prompt, system=system, provider="openai", model=fallback_model)
+        answer = call_llm_with_tools(prompt, system=system, provider="openai", model=fallback_model)
         used_provider = "openai"
 
     return {
