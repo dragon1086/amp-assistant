@@ -38,8 +38,15 @@ plugins:
 
   # image_gen: generate images with /imagine <prompt>
   image_gen:
-    backend: dalle3   # dalle3 | local | replicate
-    local_url: http://localhost:7860  # for Automatic1111 or ComfyUI
+    backend: nanonbanana2   # nanonbanana2 | dalle3 | local | replicate
+    #
+    # nanonbanana2 = Google Gemini 3.1 Flash Image (출시: 2026-02-26)
+    #   - 최대 4K 해상도, ~4초 생성, ~$0.10/장
+    #   - 필요: GOOGLE_API_KEY (유료 tier)
+    gemini_model: gemini-3.1-flash-image-preview
+    #
+    # local = Automatic1111 / ComfyUI (나노바나나2 등 로컬 서버)
+    local_url: http://localhost:7860
 
 mcp:
   # MCP (Model Context Protocol) server connections

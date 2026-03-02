@@ -1,4 +1,4 @@
-"""Image generation plugin — DALL-E 3, local Stable Diffusion, or Replicate.
+"""Image generation plugin — Nano Banana 2 (Gemini), DALL-E 3, local SD, or Replicate.
 
 Commands:
   /imagine <prompt> — generate an image from text
@@ -6,8 +6,15 @@ Commands:
 Config (config.yaml):
   plugins:
     image_gen:
-      backend: dalle3       # dalle3 | local | replicate
-      local_url: http://localhost:7860
+      backend: nanonbanana2   # nanonbanana2 | dalle3 | local | replicate
+      local_url: http://localhost:7860  # for backend: local
+      gemini_model: gemini-3.1-flash-image-preview  # Nano Banana 2 model ID
+
+Nano Banana 2 = Google Gemini 3.1 Flash Image (출시: 2026-02-26)
+  - 모델 ID: gemini-3.1-flash-image-preview
+  - 최대 4K 해상도, 3× 빠른 생성 속도
+  - 필요: GOOGLE_API_KEY (유료 tier, ~$0.10/장)
+  - SDK: pip install google-generativeai
 """
 import asyncio
 import base64
@@ -45,26 +52,71 @@ class ImageGenPlugin(BasePlugin):
         backend = plugin_config.get("backend", "dalle3")
 
         try:
-            if backend == "dalle3":
+            if backend in ("nanonbanana2", "gemini", "nano_banana"):
+                gemini_model = plugin_config.get("gemini_model", "gemini-3.1-flash-image-preview")
+                image_bytes = await self._nanonbanana2(prompt, gemini_model)
+                caption_tag = "🍌 나노바나나2"
+            elif backend == "dalle3":
                 image_bytes = await self._dalle3(prompt)
+                caption_tag = "🎨 DALL-E 3"
             elif backend == "local":
                 local_url = plugin_config.get("local_url", "http://localhost:7860")
                 image_bytes = await self._local_sd(prompt, local_url)
+                caption_tag = "🖥️ 로컬 SD"
             elif backend == "replicate":
                 image_bytes = await self._replicate(prompt)
+                caption_tag = "☁️ Replicate"
             else:
                 await update.message.reply_text(f"❌ 알 수 없는 backend: `{backend}`", parse_mode="Markdown")
                 return None
 
             await update.message.reply_photo(
                 photo=image_bytes,
-                caption=f"🎨 {prompt[:200]}",
+                caption=f"{caption_tag} | {prompt[:180]}",
             )
         except Exception as e:
             logger.error(f"ImageGen error: {e}", exc_info=True)
             await update.message.reply_text(f"❌ 이미지 생성 실패: {str(e)[:200]}")
 
         return None
+
+    async def _nanonbanana2(self, prompt: str, model_id: str = "gemini-3.1-flash-image-preview") -> bytes:
+        """Nano Banana 2 — Google Gemini 3.1 Flash Image (출시: 2026-02-26).
+
+        - 최대 4K 해상도, 3× 생성 속도 향상
+        - 필요: GOOGLE_API_KEY (유료 tier)
+        - pip install google-generativeai
+        """
+        import os
+
+        import google.generativeai as genai
+
+        api_key = os.environ.get("GOOGLE_API_KEY") or os.environ.get("GEMINI_API_KEY", "")
+        if not api_key:
+            raise ValueError(
+                "GOOGLE_API_KEY 또는 GEMINI_API_KEY 환경변수가 설정되지 않았습니다\n"
+                "Google AI Studio에서 API 키를 발급받으세요: https://aistudio.google.com\n"
+                "⚠️ 이미지 생성은 유료 tier 필요 (~$0.10/장)"
+            )
+
+        genai.configure(api_key=api_key)
+        model = genai.GenerativeModel(model_id)
+
+        # Run in thread since google-generativeai is sync
+        def _generate() -> bytes:
+            response = model.generate_content(
+                prompt,
+                generation_config=genai.types.GenerationConfig(
+                    response_modalities=["IMAGE", "TEXT"],
+                ),
+            )
+            # Extract image bytes from response parts
+            for part in response.candidates[0].content.parts:
+                if hasattr(part, "inline_data") and part.inline_data:
+                    return part.inline_data.data  # raw bytes
+            raise RuntimeError("응답에서 이미지를 찾을 수 없습니다. 프롬프트를 수정해보세요.")
+
+        return await asyncio.to_thread(_generate)
 
     async def _dalle3(self, prompt: str) -> bytes:
         import os

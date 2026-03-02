@@ -37,6 +37,14 @@ dev = [
     "mypy>=1.8",
     "ruff>=0.4",
 ]
+# pip install "amp-assistant[nanonbanana2]"
+nanonbanana2 = [
+    "google-generativeai>=0.8.0",
+]
+# pip install "amp-assistant[all]"
+all = [
+    "google-generativeai>=0.8.0",
+]
 
 [project.scripts]
 amp = "amp.interfaces.cli:cli"
