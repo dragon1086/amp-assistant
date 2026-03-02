@@ -8,6 +8,7 @@ Key invariant: Agent A and Agent B MUST NOT see each other's output.
 This independence is what creates emergence.
 """
 
+import json
 import os
 import subprocess
 
@@ -26,6 +27,45 @@ def _call_openai(prompt: str, system: str) -> str:
         input=prompt,
     )
     return response.output_text
+
+
+def _call_openai_raw(prompt: str) -> str:
+    """Single LLM call via OpenAI API with no system prompt."""
+    import openai as _openai
+    client = _openai.OpenAI(api_key=os.environ["OPENAI_API_KEY"])
+    response = client.responses.create(
+        model="gpt-5.2",
+        input=prompt,
+    )
+    return response.output_text
+
+
+def _extract_insights(query: str, response_a: str, response_b: str, reconciled: str) -> dict:
+    """Extract agreement/conflict structure between two agents."""
+    prompt = f"""Two AI agents from different companies analyzed this question independently.
+
+Question: {query}
+
+Agent A (OpenAI GPT): {response_a[:800]}
+
+Agent B (Anthropic Claude): {response_b[:800]}
+
+Synthesized answer: {reconciled[:400]}
+
+Extract in JSON:
+{{
+  "agreements": ["point both agents agreed on", ...],
+  "gpt_only": ["insight only GPT raised", ...],
+  "claude_only": ["insight only Claude raised", ...],
+  "trust_reason": "one sentence: why cross-provider makes this more reliable"
+}}
+Return valid JSON only."""
+
+    try:
+        result = _call_openai_raw(prompt)
+        return json.loads(result)
+    except Exception:
+        return {"agreements": [], "gpt_only": [], "claude_only": [], "trust_reason": ""}
 
 
 def _call_claude(prompt: str, system: str = "") -> str:
@@ -162,6 +202,9 @@ Answer in the same language as the original question."""
     # Persist synthesized answer to KG for future context
     kg.add(content=final_answer, tags=["emergent", "reconciled"])
 
+    # Stage 5: Extract insight metadata (agreements, GPT-only, Claude-only)
+    insights = _extract_insights(query, agent_a_text, agent_b_text, final_answer)
+
     return {
         "answer": final_answer,
         "mode": "emergent",
@@ -176,6 +219,7 @@ Answer in the same language as the original question."""
         "persona_domain": personas["domain"],
         "persona_diversity": personas["diversity_score"],
         "persona_source": personas["source"],
+        "insights": insights,
     }
 
 

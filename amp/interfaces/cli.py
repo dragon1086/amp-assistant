@@ -109,6 +109,28 @@ def _print_emergent_result(result: dict):
     # CSER
     console.print()
     console.print(f"[bold]📊 신뢰도:[/bold] {format_cser(cser, confidence)}")
+
+    # Insight panel
+    if result.get("insights"):
+        ins = result["insights"]
+        lines = []
+        if ins.get("agreements"):
+            lines.append("[green]🤝 합의[/green]")
+            for a in ins["agreements"][:2]:
+                lines.append(f"  • {a}")
+        if ins.get("gpt_only"):
+            lines.append("\n[blue]🔵 GPT만 발견[/blue]")
+            for a in ins["gpt_only"][:2]:
+                lines.append(f"  • {a}")
+        if ins.get("claude_only"):
+            lines.append("\n[orange1]🟠 Claude만 발견[/orange1]")
+            for a in ins["claude_only"][:2]:
+                lines.append(f"  • {a}")
+        if ins.get("trust_reason"):
+            lines.append(f"\n[dim]💡 {ins['trust_reason']}[/dim]")
+        if lines:
+            console.print(Panel("\n".join(lines), title="📊 독창성 & 신뢰도", border_style="dim"))
+
     console.print(Rule(style="dim"))
     console.print()
 
