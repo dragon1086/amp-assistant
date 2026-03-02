@@ -1,0 +1,31 @@
+# amp configuration example
+# Copy this to ~/.amp/config.yaml and fill in your values
+# Environment variables override these settings
+
+llm:
+  # Provider: openai (default) | anthropic
+  provider: openai
+
+  # Model options:
+  #   openai:    gpt-4o-mini (default, cheap+fast), gpt-4o, gpt-4.1
+  #   anthropic: claude-haiku-4-5-20251001 (fast), claude-sonnet-4-6
+  model: gpt-4o-mini
+
+  # API key - can also be set via OPENAI_API_KEY or ANTHROPIC_API_KEY env var
+  api_key: ${OPENAI_API_KEY}
+
+telegram:
+  # Telegram bot token from @BotFather
+  # Can also be set via TELEGRAM_BOT_TOKEN env var
+  token: ${TELEGRAM_BOT_TOKEN}
+
+amp:
+  # Default processing mode:
+  #   auto      - Automatically detect best mode (recommended)
+  #   solo      - Always use single LLM call (fastest)
+  #   pipeline  - Always use plan→solve→review→fix pipeline
+  #   emergent  - Always use 2-agent independent analysis
+  default_mode: auto
+
+  # Local knowledge graph storage path
+  kg_path: ~/.amp/kg.json
