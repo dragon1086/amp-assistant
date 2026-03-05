@@ -145,6 +145,18 @@ async def _stream_emergent(id_: Any, query: str, rounds: int) -> AsyncGenerator[
         yield _sse_event(_rpc_error(id_, -32000, str(e)[:200]))
 
 
+def _cser_label(cser: float) -> str:
+    """CSER 점수 → 사람이 이해하기 쉬운 한국어 텍스트"""
+    if cser < 0.30:
+        return "⚠️ 비슷한 의견 → 심화 분석 진행"
+    elif cser < 0.60:
+        return "✅ 적절히 다른 시각"
+    elif cser < 0.80:
+        return "✅ 꽤 다른 시각"
+    else:
+        return "🔥 매우 다른 시각"
+
+
 def _format_emergent_result(result: dict) -> str:
     answer = result.get("answer", "")
     cser = result.get("cser")
@@ -154,12 +166,12 @@ def _format_emergent_result(result: dict) -> str:
 
     lines = [answer]
     if cser is not None:
-        cser_emoji = "✅" if cser >= 0.30 else "⚠️"
-        lines.append(f"\n📊 CSER: {cser:.3f} {cser_emoji} | {rounds}-round")
+        label = _cser_label(cser)
+        lines.append(f"\n📊 두 AI 시각 다양성: {label} | {cser:.2f} | {rounds}-round")
         lines.append(f"🤖 {agent_a_label} × {agent_b_label}")
     agreements = result.get("agreements", [])
     if agreements:
-        lines.append(f"✅ 합의: {', '.join(agreements[:2])}")
+        lines.append(f"💡 합의점: {', '.join(agreements[:2])}")
     return "\n".join(lines)
 
 
