@@ -1,39 +1,36 @@
 #!/bin/bash
-# amp Telegram 봇 시작 스크립트
-# 순서: registry 등록 → MCP 서버(백그라운드) → 텔레그램 봇
-
-set -e
+# start_telegram_bot.sh — amp Telegram 봇 + MCP 서버 시작
+# MACRS 통합: 시작 시 registry 등록 + MCP 서버 백그라운드 시작
 
 source ~/amp/venv/bin/activate
 export OPENAI_API_KEY=$(grep "OPENAI_API_KEY" ~/.zshrc | head -1 | sed "s/.*='//;s/'.*//")
 export TELEGRAM_BOT_TOKEN=$1
-
 cd ~/amp
 
-# 1. MACRS registry에 amp 자동 등록
-echo "[start] MACRS registry 등록 중..."
-python -c '
-import sys
-sys.path.insert(0, "/Users/rocky/ai-comms")
+# ── 1. MACRS Registry 등록 ──────────────────────────────────────
+echo "[amp] MACRS registry 등록 중..."
+python -c "
+import sys, os
+sys.path.insert(0, os.path.expanduser('~/ai-comms'))
+sys.path.insert(0, os.path.expanduser('~/amp'))
 from amp.core.agent_registration import register_amp
 register_amp()
-'
+" 2>/dev/null || echo "[amp] registry 등록 실패 (무시 — 계속 진행)"
 
-# 2. amp MCP 서버 백그라운드 시작 (포트 3010)
-echo "[start] amp MCP 서버 시작 (localhost:3010)..."
-AMP_MCP_PORT=3010 python -m amp.mcp_server &
-MCP_PID=$!
-echo "[start] MCP 서버 PID: $MCP_PID"
+# ── 2. amp MCP 서버 백그라운드 시작 ────────────────────────────
+echo "[amp] MCP 서버 시작 (port 3010)..."
+# 이미 실행 중이면 스킵
+if lsof -i :3010 -sTCP:LISTEN -t >/dev/null 2>&1; then
+    echo "[amp] MCP 서버 이미 실행 중"
+else
+    nohup python -m uvicorn amp.mcp_server:app \
+        --host 127.0.0.1 --port 3010 --log-level warning \
+        >> /tmp/amp-mcp-server.log 2>&1 &
+    MCP_PID=$!
+    echo "[amp] MCP 서버 PID: $MCP_PID (로그: /tmp/amp-mcp-server.log)"
+    sleep 1  # 서버 기동 대기
+fi
 
-# 서버 준비 대기 (최대 5초)
-for i in 1 2 3 4 5; do
-    sleep 1
-    if curl -s http://localhost:3010/health > /dev/null 2>&1; then
-        echo "[start] MCP 서버 준비 완료"
-        break
-    fi
-done
-
-# 3. 텔레그램 봇 시작 (포그라운드)
-echo "[start] 텔레그램 봇 시작..."
+# ── 3. Telegram 봇 시작 ────────────────────────────────────────
+echo "[amp] Telegram 봇 시작..."
 python -m amp.interfaces.telegram_bot
