@@ -386,7 +386,7 @@ def run(query: str, context: list[dict], config: dict, on_progress=None,
 
     # ── CSER Gate: θ=0.30 미달 시 자동 심화 ────────────────────────────────
     _gate_retry, _next_rounds, _gate_action = should_retry(
-        cser_data["cser"], rounds=2, retry_count=_retry_count
+        cser_data["cser"], current_rounds=2, retry_count=_retry_count
     )
     if _gate_retry:
         _p("cser_gate", cser=cser_data["cser"], action=_gate_action, upgrading_to=_next_rounds)
