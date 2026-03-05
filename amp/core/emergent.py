@@ -24,6 +24,8 @@ from amp.core.auto_persona import generate_personas
 from amp.core.kg import KnowledgeGraph
 from amp.core.llm_factory import call_llm
 from amp.core.metrics import calculate_cser
+from amp.core.cser_gate import should_retry, patch_result_with_gate_info
+from amp.core import kg_bridge
 
 
 def _is_same_vendor(prov_a: str, prov_b: str) -> bool:
@@ -191,7 +193,7 @@ def _run_4round_debate(
 
 
 def run(query: str, context: list[dict], config: dict, on_progress=None,
-        rounds: int = 2) -> dict:
+        rounds: int = 2, _retry_count: int = 0) -> dict:
     """Execute emergent multi-agent analysis.
 
     Stages (rounds=2, default — independent analysis):
@@ -332,7 +334,7 @@ def run(query: str, context: list[dict], config: dict, on_progress=None,
         kg.add(content=final_answer, tags=["emergent", "debate", "4round"])
         insights = _extract_insights(query, agent_a_text, agent_b_text, final_answer, config)
         _p("done")
-        return {
+        _result_4r = {
             "answer": final_answer,
             "mode": "emergent",
             "rounds": 4,
@@ -354,6 +356,12 @@ def run(query: str, context: list[dict], config: dict, on_progress=None,
             "same_vendor": same_vendor,
             "insights": insights,
         }
+        # CSER gate: 4-round에서도 낮으면 low_cser_flagged
+        _gate_retry, _, _gate_action = should_retry(cser_data["cser"], 4, _retry_count)
+        _result_4r = patch_result_with_gate_info(_result_4r, False, _gate_action, cser_data["cser"])
+        # emergent KG에 비동기 저장
+        kg_bridge.save_to_emergent_kg(query, _result_4r, async_mode=True)
+        return _result_4r
 
     # ── rounds=2 (default): Independent analysis ─────────────────────────────
     _p("agent_a_start", persona=personas.get("persona_a", "Agent A"), model=f"{prov_a}/{mod_a}")
@@ -375,6 +383,18 @@ def run(query: str, context: list[dict], config: dict, on_progress=None,
 
     # Stage 3: Reconciler sees both outputs
     cser_data = calculate_cser(agent_a_text, agent_b_text)
+
+    # ── CSER Gate: θ=0.30 미달 시 자동 심화 ────────────────────────────────
+    _gate_retry, _next_rounds, _gate_action = should_retry(
+        cser_data["cser"], rounds=2, retry_count=_retry_count
+    )
+    if _gate_retry:
+        _p("cser_gate", cser=cser_data["cser"], action=_gate_action, upgrading_to=_next_rounds)
+        return run(
+            query=query, context=context, config=config,
+            on_progress=on_progress, rounds=_next_rounds,
+            _retry_count=_retry_count + 1,
+        )
 
     reconciler_prompt = f"""You have received independent analyses from two expert agents on the same question.
 
@@ -441,7 +461,7 @@ Answer in the same language as the original question."""
     insights = _extract_insights(query, agent_a_text, agent_b_text, final_answer, config)
 
     _p("done")
-    return {
+    _result_2r = {
         "answer": final_answer,
         "mode": "emergent",
         "rounds": 2,
@@ -461,6 +481,11 @@ Answer in the same language as the original question."""
         "same_vendor": same_vendor,
         "insights": insights,
     }
+    # CSER gate 메타 (이미 gate_retry 통과했으므로 gate_triggered=False)
+    _result_2r = patch_result_with_gate_info(_result_2r, False, _gate_action, cser_data["cser"])
+    # emergent KG에 비동기 저장
+    kg_bridge.save_to_emergent_kg(query, _result_2r, async_mode=True)
+    return _result_2r
 
 
 def _parse_reconciliation(text: str) -> tuple[list[str], list[str], str]:
