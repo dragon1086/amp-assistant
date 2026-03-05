@@ -15,7 +15,8 @@ import logging
 logger = logging.getLogger(__name__)
 
 CSER_GATE_THRESHOLD = 0.30
-MAX_GATE_RETRIES = 1  # 재시도 1회 (비용 방어)
+MAX_GATE_RETRIES = 0  # 재시도 비활성화 — 재귀 LLM 호출 누적으로 타임아웃 발생
+                      # TODO: 병렬 실행 구현 후 재활성화
 
 
 def should_retry(cser: float, current_rounds: int, retry_count: int) -> tuple[bool, int, str]:
