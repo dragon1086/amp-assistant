@@ -1,76 +1,74 @@
 # amp configuration example
 # Copy this to ~/.amp/config.yaml and fill in your values
-# Environment variables override these settings
+# 최신 모델 기준: 2026-03
 
 llm:
-  provider: anthropic_oauth  # primary: Claude OAuth (free via Claude Code)
-  openai_model: gpt-5.2      # only used for Emergent Agent A (cross-provider diversity)
-  embedding_model: text-embedding-3-small  # OpenAI only — no Claude equivalent
+  provider: anthropic_oauth  # reconciler 기본: Claude OAuth (무료)
+  openai_model: gpt-5.2      # Agent A 기본 (cross-vendor diversity 최대화)
+  embedding_model: text-embedding-3-small  # OpenAI embedding (변경 불필요)
 
 agents:
-  # Agent A & B는 자유롭게 조합 가능
-  # 교차 벤더(권장): CSER 높음, 독창적 관점 충돌 최대화
-  # 같은 벤더:       동작하지만 CSER 낮아질 수 있음 (비슷한 답 경향)
+  # ── Agent A & B 조합 가이드 ──────────────────────────────────
+  # 교차 벤더(권장): GPT-5.x × Claude → CSER 최고, 독창적 관점 충돌 최대화
+  # 같은 벤더:       동작하지만 CSER 낮아질 수 있음 (echo-chamber 위험)
 
   agent_a:
     provider: openai
-    model: gpt-4o            # openai | anthropic | anthropic_oauth | local
+    model: gpt-5.2            # 최신 최상위 (2026-03)
+                              # 대안: gpt-5.1, gpt-5, gpt-5-mini (비용↓)
+    reasoning_effort: high    # none | low | medium | high | xhigh
+                              # emergent 분석: high 권장 (xhigh = 최대 추론, 느림)
+                              # solo/빠른 응답: low | medium
+
   agent_b:
     provider: anthropic_oauth
-    model: claude-sonnet-4-6  # Claude Code OAuth = 무료
+    model: claude-sonnet-4-6  # 최신 (2026-03), OAuth = 무료
+                              # 최고 품질 원하면: claude-opus-4-6 (유료 API 필요)
+    # thinking: adaptive      # anthropic provider 사용 시만 적용
+                              # adaptive: 모델이 자율 결정 (비용 효율적, 권장)
+                              # enabled:  항상 extended thinking (깊은 추론, 비용↑)
 
-  # 같은 벤더 예시 (GPT끼리):
-  # agent_a: {provider: openai, model: gpt-4o}
-  # agent_b: {provider: openai, model: gpt-4.1}
+  # ── 고품질 옵션 (유료 API, ANTHROPIC_API_KEY 필요) ─────────
+  # agent_b:
+  #   provider: anthropic
+  #   model: claude-opus-4-6  # 최상위 Claude, 에이전트/코딩/복잡 추론
+  #   thinking: adaptive       # 비용 효율적 extended thinking
 
-  # 같은 벤더 예시 (Claude끼리):
-  # agent_a: {provider: anthropic_oauth, model: claude-opus-4-6}
-  # agent_b: {provider: anthropic_oauth, model: claude-sonnet-4-6}
+  # ── 비용 절감 옵션 ──────────────────────────────────────────
+  # agent_a:
+  #   provider: openai
+  #   model: gpt-5-mini        # GPT-5 계열 가장 저렴
+  #   reasoning_effort: low
+  # agent_b:
+  #   provider: anthropic_oauth
+  #   model: claude-haiku-4-5  # 가장 빠른 Claude
 
-  # 로컬 모델 (Ollama):
+  # ── 로컬 모델 (Ollama, 완전 무료) ──────────────────────────
   # agent_a: {provider: local, model: llama3.3}
   # agent_b: {provider: local, model: mistral}
 
+  # ── 같은 벤더 (persona diversity 실험용) ───────────────────
+  # agent_a: {provider: openai, model: gpt-5.2, reasoning_effort: high}
+  # agent_b: {provider: openai, model: gpt-5.2, reasoning_effort: low}
+  # → CSER 낮아질 수 있음; 페르소나 주입으로 일부 보완
+
 telegram:
-  # Telegram bot token from @BotFather
-  # Can also be set via TELEGRAM_BOT_TOKEN env var
   token: ${TELEGRAM_BOT_TOKEN}
 
 amp:
-  # Default processing mode:
-  #   auto      - Automatically detect best mode (recommended)
-  #   solo      - Always use single LLM call (fastest)
-  #   pipeline  - Always use plan→solve→review→fix pipeline
-  #   emergent  - Always use 2-agent independent analysis
-  default_mode: auto
-
-  # Local knowledge graph storage path (SQLite)
+  default_mode: auto  # auto | solo | pipeline | emergent
   kg_path: ~/.amp/kg.db
 
 plugins:
-  # image_vision: analyze photos sent to the bot (GPT-4o Vision)
   image_vision:
-    provider: openai  # only openai supported for now
+    provider: openai
 
-  # image_gen: generate images with /imagine <prompt>
   image_gen:
-    backend: nanonbanana2   # nanonbanana2 | dalle3 | local | replicate
-    #
-    # nanonbanana2 = Google Gemini 3.1 Flash Image (출시: 2026-02-26)
-    #   - 최대 4K 해상도, ~4초 생성, ~$0.10/장
-    #   - 필요: GOOGLE_API_KEY (유료 tier)
+    backend: nanonbanana2            # gemini-3.1-flash-image-preview (나노바나나2)
     gemini_model: gemini-3.1-flash-image-preview
-    #
-    # local = Automatic1111 / ComfyUI (나노바나나2 등 로컬 서버)
-    local_url: http://localhost:7860
+    # 대안 백엔드: dalle3, replicate, local
 
-mcp:
-  # MCP (Model Context Protocol) server connections
-  # Each entry requires: name and url
-  servers: []
-  # Example:
-  # servers:
-  #   - name: filesystem
-  #     url: http://localhost:3001
-  #   - name: brave-search
-  #     url: http://localhost:3002
+  claude_executor:
+    workdir: ~/amp
+    timeout: 120
+    max_output: 3000
