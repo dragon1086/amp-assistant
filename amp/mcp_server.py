@@ -85,9 +85,9 @@ def _get_config() -> dict:
         return load_config()
     except Exception:
         return {
-            "llm": {"provider": "anthropic_oauth", "model": "gpt-4o-mini"},
+            "llm": {"provider": "anthropic_oauth", "model": "gpt-5-mini"},
             "agents": {
-                "agent_a": {"provider": "openai", "model": "gpt-4o-mini"},
+                "agent_a": {"provider": "openai", "model": "gpt-5-mini"},
                 "agent_b": {"provider": "anthropic_oauth", "model": "claude-sonnet-4-6"},
             },
             "amp": {"default_mode": "auto", "kg_path": "~/.amp/kg.db"},

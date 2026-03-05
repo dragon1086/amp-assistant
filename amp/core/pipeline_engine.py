@@ -23,7 +23,7 @@ def run(query: str, context: list[dict], config: dict) -> dict:
     try:
         provider, model = _get_agent_cfg(config, "agent_a")
     except Exception:
-        provider, model = "openai", "gpt-4o-mini"
+        provider, model = "openai", "gpt-5-mini"
 
     AMP_CONTEXT = (
         "You are amp — a local AI assistant running on the user's own machine. "

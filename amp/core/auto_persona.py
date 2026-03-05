@@ -66,12 +66,37 @@ DOMAIN_KEYWORDS = {
 }
 
 
-def detect_domain(query: str) -> str:
+def detect_domain(query: str, use_llm_fallback: bool = True) -> str:
     query_lower = query.lower()
     for domain, keywords in DOMAIN_KEYWORDS.items():
         if any(kw in query_lower for kw in keywords):
             return domain
+    # 키워드 미스 → LLM fallback (gpt-5-mini, 경량)
+    if use_llm_fallback:
+        return _llm_detect_domain(query)
     return "default"
+
+
+def _llm_detect_domain(query: str) -> str:
+    """키워드로 감지 못한 경우 gpt-5-mini로 도메인 분류."""
+    try:
+        client = OpenAI(api_key=os.environ.get("OPENAI_API_KEY", ""))
+        domains = list(DOMAIN_KEYWORDS.keys()) + ["default"]
+        resp = client.chat.completions.create(
+            model="gpt-5-mini",
+            messages=[
+                {"role": "system", "content": (
+                    f"Classify the query into exactly one of: {', '.join(domains)}. "
+                    "Return the domain name only, nothing else."
+                )},
+                {"role": "user", "content": query},
+            ],
+            max_tokens=10,
+        )
+        domain = resp.choices[0].message.content.strip().lower()
+        return domain if domain in DOMAIN_KEYWORDS else "default"
+    except Exception:
+        return "default"
 
 
 def validate_persona_diversity(persona_a: str, persona_b: str, client: OpenAI) -> float:
@@ -160,7 +185,7 @@ Return valid JSON only: {{"persona_a": "...", "persona_b": "..."}}"""
 
     try:
         response = client.chat.completions.create(
-            model="gpt-4o-mini",
+            model="gpt-5-mini",
             messages=[
                 {"role": "system", "content": "Generate contrasting personas. Return valid JSON only."},
                 {"role": "user", "content": prompt},

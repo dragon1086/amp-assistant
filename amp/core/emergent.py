@@ -59,7 +59,7 @@ def _get_agent_cfg(config: dict, agent: str) -> tuple[str, str, str | None]:
     if agent == "agent_a":
         return "anthropic_oauth", "claude-sonnet-4-6", None
     else:
-        return "openai", config.get("llm", {}).get("model", "gpt-4o-mini"), None
+        return "openai", config.get("llm", {}).get("model", "gpt-5-mini"), None
 
 
 def _extract_insights(
@@ -303,7 +303,7 @@ def run(query: str, context: list[dict], config: dict, on_progress=None,
     )
 
     # OAuth fallback: anthropic_oauth 실패 시 openai로 자동 전환
-    fallback_model = config.get("llm", {}).get("model", "gpt-4o-mini")
+    fallback_model = config.get("llm", {}).get("model", "gpt-5-mini")
 
     def _call_with_fallback(prompt: str, system: str, provider: str, model: str,
                             temperature=None, reasoning_effort=None) -> tuple[str, str]:

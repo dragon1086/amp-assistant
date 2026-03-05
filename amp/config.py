@@ -55,7 +55,7 @@ def load_config(config_path: Path | None = None) -> dict:
     defaults = {
         "llm": {
             "provider": "openai",
-            "model": "gpt-4o-mini",
+            "model": "gpt-5-mini",
             "api_key": "",
         },
         "telegram": {
