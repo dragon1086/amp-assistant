@@ -212,6 +212,65 @@ amp login
 
 ---
 
+## 集成 (Integrations)
+
+amp 内置多种接入方式 — 直接插入您现有的工作流。
+
+### Telegram 机器人
+
+发送问题、切换模式、管理插件、生成图像 — 全部通过 Telegram 操作。
+
+```bash
+amp bot   # 启动机器人（需要 TELEGRAM_BOT_TOKEN）
+```
+
+| 命令 | 说明 |
+|-----|------|
+| `<消息>` | 用 amp 分析（当前模式） |
+| `/mode auto\|solo\|pipeline\|emergent` | 切换推理模式 |
+| `/imagine <提示词>` | 生成图像 |
+| `/plugins` | 插件列表及状态 |
+| `/stats` | KG 节点数 + 会话统计 |
+| 📷 发送图片 | 图像分析（image_vision 插件） |
+
+---
+
+### 插件系统
+
+| 插件 | 功能 | 默认 |
+|-----|------|:----:|
+| `image_vision` | 图像分析（GPT-4o Vision） | ✅ |
+| `image_gen` | 图像生成（`/imagine`，Gemini/DALL-E） | ✅ |
+| `claude_executor` | 本地运行 Claude Code 并返回结果 | ❌ |
+| `mcp_bridge` | 将外部 MCP 服务器作为 amp 代理工具调用 | ❌ |
+
+```bash
+amp plugins
+amp plugin enable claude_executor
+```
+
+**外部插件** — 在 `~/.amp/plugins/` 中放置 `SKILL.md` + 可选 `plugin.py`。
+兼容 OpenClaw AgentSkills 格式。
+
+---
+
+### MCP 桥接（amp 调用外部 MCP 服务器）
+
+推理过程中，amp 代理可将**外部 MCP 服务器**作为工具调用 — 实时访问文件系统、GitHub、网络搜索等。
+
+```yaml
+mcp:
+  servers:
+    - name: filesystem
+      url: http://localhost:3001
+      enabled: true
+    - name: brave-search
+      url: http://localhost:3002
+      enabled: true
+```
+
+---
+
 ## MCP 服务器
 
 与 Claude Desktop、Cursor、OpenClaw 等 MCP 兼容客户端集成:

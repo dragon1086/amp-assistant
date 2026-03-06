@@ -211,6 +211,70 @@ amp login
 
 ---
 
+## 連携 (Integrations)
+
+ampは複数のインターフェースを標準搭載 — 既存のワークフローにそのまま統合できます。
+
+### Telegramボット
+
+質問送信・モード切替・プラグイン管理・画像生成まですべてTelegramから操作可能。
+
+```bash
+amp bot   # ボット起動（TELEGRAM_BOT_TOKEN が必要）
+```
+
+| コマンド | 説明 |
+|---------|------|
+| `<メッセージ>` | ampで分析（現在のモード） |
+| `/mode auto\|solo\|pipeline\|emergent` | 推論モード切替 |
+| `/imagine <プロンプト>` | 画像生成 |
+| `/plugins` | プラグイン一覧・状態確認 |
+| `/stats` | KGノード数・セッション統計 |
+| 📷 写真送信 | 画像分析（image_visionプラグイン） |
+
+---
+
+### プラグインシステム
+
+| プラグイン | 機能 | デフォルト |
+|-----------|------|:--------:|
+| `image_vision` | 写真分析（GPT-4o Vision） | ✅ |
+| `image_gen` | 画像生成（`/imagine`、Gemini/DALL-E） | ✅ |
+| `claude_executor` | Claude Codeをローカル実行して結果返却 | ❌ |
+| `mcp_bridge` | 外部MCPサーバーをampエージェントのツールとして接続 | ❌ |
+
+```bash
+amp plugins
+amp plugin enable claude_executor
+```
+
+**外部プラグイン** — `~/.amp/plugins/` に `SKILL.md` + 任意の `plugin.py` を配置:
+```
+~/.amp/plugins/my_skill/
+├── SKILL.md    # name, description, enabled_by_default
+└── plugin.py   # 任意（BasePluginサブクラス）
+```
+OpenClaw AgentSkillsフォーマットと互換。
+
+---
+
+### MCPブリッジ（ampが外部MCPサーバーを呼び出す）
+
+推論中にampエージェントが**外部MCPサーバー**をツールとして呼び出せます — ファイルシステム、GitHub、Web検索などへのリアルタイムアクセスが可能。
+
+```yaml
+mcp:
+  servers:
+    - name: filesystem
+      url: http://localhost:3001
+      enabled: true
+    - name: brave-search
+      url: http://localhost:3002
+      enabled: true
+```
+
+---
+
 ## MCPサーバー
 
 Claude Desktop、Cursor、OpenClawなどのMCP対応クライアントと連携:

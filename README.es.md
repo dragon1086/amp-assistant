@@ -211,6 +211,65 @@ amp login
 
 ---
 
+## Integraciones
+
+amp incluye múltiples interfaces de serie — conéctalo directamente a tu flujo de trabajo existente.
+
+### Bot de Telegram
+
+Envía preguntas, cambia modos, gestiona plugins y genera imágenes — todo desde Telegram.
+
+```bash
+amp bot   # iniciar el bot (requiere TELEGRAM_BOT_TOKEN)
+```
+
+| Comando | Descripción |
+|---------|-------------|
+| `<mensaje>` | Analizar con amp (modo actual) |
+| `/mode auto\|solo\|pipeline\|emergent` | Cambiar modo de razonamiento |
+| `/imagine <prompt>` | Generar imagen |
+| `/plugins` | Lista de plugins + estado |
+| `/stats` | Nodos KG + estadísticas de sesión |
+| 📷 Foto | Análisis de imagen (plugin image_vision) |
+
+---
+
+### Sistema de Plugins
+
+| Plugin | Función | Por defecto |
+|--------|---------|:-----------:|
+| `image_vision` | Análisis de fotos (GPT-4o Vision) | ✅ |
+| `image_gen` | Generación de imágenes (`/imagine`, Gemini/DALL-E) | ✅ |
+| `claude_executor` | Ejecuta Claude Code localmente y devuelve resultados | ❌ |
+| `mcp_bridge` | Conecta servidores MCP externos como herramientas de los agentes | ❌ |
+
+```bash
+amp plugins
+amp plugin enable claude_executor
+```
+
+**Plugins externos** — coloca `SKILL.md` + `plugin.py` opcional en `~/.amp/plugins/`.
+Compatible con el formato OpenClaw AgentSkills.
+
+---
+
+### Puente MCP (amp → servidores MCP externos)
+
+Durante el razonamiento, los agentes de amp pueden llamar a **servidores MCP externos** como herramientas — acceso en tiempo real a sistemas de archivos, GitHub, búsqueda web, etc.
+
+```yaml
+mcp:
+  servers:
+    - name: filesystem
+      url: http://localhost:3001
+      enabled: true
+    - name: brave-search
+      url: http://localhost:3002
+      enabled: true
+```
+
+---
+
 ## Servidor MCP
 
 Compatible con Claude Desktop, Cursor, OpenClaw y cualquier cliente MCP:
