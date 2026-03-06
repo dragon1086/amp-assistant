@@ -105,7 +105,10 @@ def claude_code(task: str, workdir: str = None) -> dict:
         return {"error": f"claude binary not found at {claude_bin}"}
 
     cwd = workdir or str(Path.home() / "amp")
-    env = {**os.environ, "CLAUDE_CODE_OAUTH_TOKEN": token}
+    # CLAUDECODE 등 중첩 방지 변수 제거 (OpenClaw 환경 호환)
+    _STRIP = {"CLAUDECODE", "CLAUDE_CODE_ENTRYPOINT", "CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS"}
+    env = {k: v for k, v in os.environ.items() if k not in _STRIP}
+    env["CLAUDE_CODE_OAUTH_TOKEN"] = token
     try:
         result = subprocess.run(
             [claude_bin, "-p", "--dangerously-skip-permissions", task],
