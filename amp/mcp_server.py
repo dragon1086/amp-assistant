@@ -166,7 +166,7 @@ def _cser_label(cser: float) -> str:
 
 
 def _format_emergent_result(result: dict) -> str:
-    answer = result.get("answer", "")
+    answer = result.get("answer") or ""  # None 방어 (reasoning 모델 빈 응답 처리)
     cser = result.get("cser")
     rounds = result.get("rounds", 2)
     agent_a_label = result.get("agent_a_label", "Agent A")
