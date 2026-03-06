@@ -662,9 +662,10 @@ def login(provider):
     $ amp login --provider anthropic  # Claude만 (claude login)
 
     \b
-    조건:
-      OpenAI   — ChatGPT Plus/Pro 구독 필요
-      Anthropic — Claude Max/Pro 구독 필요
+    OAuth 무료 경로 (선택사항):
+      OpenAI   — ChatGPT Plus/Pro 구독 (없으면 OPENAI_API_KEY 사용)
+      Anthropic — Claude Max/Pro 구독  (없으면 ANTHROPIC_API_KEY 사용)
+    API 키 경로: amp init 으로 설정 (Gemini, DeepSeek, Mistral, xAI, 로컬도 가능)
     """
     import shutil
 
@@ -675,7 +676,7 @@ def login(provider):
             console.print("   [cyan]npm install -g @openai/codex[/cyan]")
             return False
         console.print("\n[bold]OpenAI OAuth 로그인[/bold]")
-        console.print("[dim]ChatGPT Plus/Pro 구독이 있으면 API 비용 없이 GPT-5.x 사용 가능[/dim]\n")
+        console.print("[dim]ChatGPT Plus/Pro 구독 → API 비용 없이 GPT-5.x 사용 가능 (구독 없으면 OPENAI_API_KEY 사용)[/dim]\n")
         console.print("브라우저 또는 디바이스 코드로 로그인합니다...")
         import subprocess as _sp
         result = _sp.run([codex_bin, "login", "--device-auth"], text=True)
@@ -693,7 +694,7 @@ def login(provider):
             console.print("   [cyan]npm install -g @anthropic-ai/claude-code[/cyan]")
             return False
         console.print("\n[bold]Anthropic OAuth 로그인[/bold]")
-        console.print("[dim]Claude Max/Pro 구독이 있으면 API 비용 없이 Claude 사용 가능[/dim]\n")
+        console.print("[dim]Claude Max/Pro 구독 → API 비용 없이 Claude 사용 가능 (구독 없으면 ANTHROPIC_API_KEY 사용)[/dim]\n")
         import subprocess as _sp
         result = _sp.run([claude_bin, "login"], text=True)
         if result.returncode == 0:

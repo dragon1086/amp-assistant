@@ -8,7 +8,7 @@
 [![Python 3.11+](https://img.shields.io/badge/python-3.11%2B-blue?style=flat-square)](https://python.org)
 [![License: MIT](https://img.shields.io/badge/license-MIT-green?style=flat-square)](LICENSE)
 
-**[왜 amp인가](#왜-amp인가--그냥-api-두-번-호출이-아닌-이유)** · **[설치](#설치)** · **[작동 원리](#작동-원리)** · **[벤치마크](#벤치마크)** · **[설정](#설정)**
+**[왜 amp인가](#왜-amp인가--그냥-api-두-번-호출이-아닌-이유)** · **[설치](#설치)** · **[작동 원리](#작동-원리)** · **[벤치마크](#벤치마크)** · **[선행 연구](#선행-연구-및-차별점)** · **[내부 구조](#내부-구조)** · **[설정](#설정)**
 
 <br/>
 
@@ -139,6 +139,72 @@ kg.relate(question_id, synthesis_id, "PRODUCES", weight=cser)
 | **전체 (N=30)** | **13** | **17** | **43%** |
 
 **솔직한 해석:** amp가 항상 더 낫지는 않습니다. 다중 관점이 유효한 복잡한 전략/리소스 배분 문제에서 크게 우세합니다. 단순 경력 조언이나 관계 문제는 단일 전문가 모델도 충분합니다. 빠른 전문가 답변이 필요하면 `amp -m solo`를, 질문에 진정으로 여러 프레이밍이 있으면 `amp`를 사용하세요.
+
+---
+
+## 선행 연구 및 차별점
+
+amp가 최초의 멀티 에이전트 추론 시스템은 아닙니다. 관련 선행 연구와의 비교:
+
+| 프로젝트 | 출처 | 목적 | pip 설치 | KG 메모리 | CSER 측정 | 에이전트 격리 | MCP |
+|---------|------|------|:---:|:---:|:---:|:---:|:---:|
+| **amp** | 오픈소스 | 인생 결정 어드바이저리 | ✅ | ✅ | ✅ | ✅ | ✅ |
+| [llm_multiagent_debate](https://github.com/composable-models/llm_multiagent_debate) | ICML 2024 | 수학/MMLU 정확도 | ❌ | ❌ | ❌ | ❌ | ❌ |
+| [DebateLLM](https://github.com/instadeepai/DebateLLM) | InstaDeep 2024 | 의료 Q&A 벤치마크 | ❌ | ❌ | ❌ | ❌ | ❌ |
+| [ECON](https://github.com/tmlr-group/ECON) | ICML 2025 | Bayesian Nash 조율 | ❌ | ❌ | ❌ | partial | ❌ |
+| [AutoGen](https://github.com/microsoft/autogen) | Microsoft | 에이전트 태스크 자동화 | ✅ | ❌ | ❌ | ❌ | ❌ |
+| [CrewAI](https://crewai.com) | 상업용 | 엔터프라이즈 워크플로우 | ✅ | ❌ | ❌ | ❌ | ❌ |
+| [LangGraph reflection](https://github.com/langchain-ai/langgraph-reflection) | LangChain | 단일 모델 자기비평 | ✅ | ❌ | ❌ | ❌ | ❌ |
+
+**핵심 차이:** 학술 MAD 논문들은 닫힌 정답이 있는 MMLU/수학 문제의 정확도를 높이기 위해 설계됐습니다. amp는 정답이 없는 개방형 어드바이저리 품질을 위해 설계됐습니다. AutoGen/CrewAI는 태스크 완료 프레임워크이고, amp는 추론 품질 측정 프레임워크입니다.
+
+---
+
+## 내부 구조
+
+기술적 세부사항은 [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md) 참조.
+
+### 지식 그래프
+
+```
+저장소   : SQLite (~/.amp/kg.db) — 단일 파일, 서버 불필요
+임베딩   : OpenAI text-embedding-3-small (1536차원)
+검색     : numpy 코사인 유사도 — flat scan, O(n), ~10만 노드까지 적합
+스키마   : nodes(id, type, content, embedding, tags, metadata)
+         + edges(source_id, target_id, relation, weight=CSER)
+```
+
+각 합성은 `question` 노드 → `synthesis` 노드 → CSER 가중치 엣지(`PRODUCES`)로 저장됩니다. 이후 유사한 질문이 들어오면 과거 고품질 합성이 컨텍스트로 주입됩니다.
+
+### CSER 알고리즘
+
+```python
+# 1. 아이디어 단위 추출 (문장 분리 + 중복 제거)
+ideas_a = extract_ideas(agent_a_response)   # 정규화된 문장 집합
+ideas_b = extract_ideas(agent_b_response)
+
+# 2. Jaccard 기반 발현율
+unique_a = ideas_a - ideas_b
+unique_b = ideas_b - ideas_a
+total    = ideas_a | ideas_b
+cser = (len(unique_a) + len(unique_b)) / len(total)  # 범위: 0.0~1.0
+
+# 3. 게이트
+if cser < θ (0.30):
+    4라운드 적대적 토론으로 자동 에스컬레이션
+```
+
+### 도메인 감지 파이프라인
+
+```
+쿼리
+  │
+  ├─ 1. 정적 키워드 매칭 (O(1), 9개 프리셋)       ──► 프리셋 페르소나
+  ├─ 2. DomainRegistry.find() — 유사도 ≥ 0.78   ──► 캐시된 페르소나
+  └─ 3. DomainRegistry.create() — gpt-5-mini    ──► 신규 창작 + 저장
+```
+
+레지스트리는 미지 쿼리가 들어올수록 자동으로 성장합니다. `amp domains`로 조회 가능.
 
 ---
 
