@@ -69,7 +69,7 @@ def call_llm(
         if os.environ.get("ANTHROPIC_API_KEY"):
             return _call_anthropic(prompt, system, model or "claude-sonnet-4-6",
                                    temperature=temperature, **kwargs)
-        return _call_claude_oauth(prompt, system)          # OAuth는 temp/thinking 미지원
+        return _call_claude_oauth(prompt, system, model=model)  # OAuth는 temp/thinking 미지원
     elif provider == "anthropic":
         return _call_anthropic(prompt, system, model, temperature=temperature, **kwargs)
     elif provider == "gemini":
@@ -296,13 +296,21 @@ class OAuthNotAvailableError(Exception):
     """Claude OAuth CLI not logged in or unavailable."""
 
 
-def _call_claude_oauth(prompt: str, system: str) -> str:
+# Claude OAuth 세션 재사용 캐시 (시스템 프롬프트 단위)
+# 첫 호출은 느릴 수 있지만, --resume으로 후속 호출은 2~5초대로 단축 가능.
+_CLAUDE_OAUTH_SESSION_IDS: dict[str, str] = {}
+
+
+def _call_claude_oauth(prompt: str, system: str, model: str | None = None) -> str:
     """Call Claude via claude CLI subprocess (free for OAuth users).
+
+    성능 최적화:
+    - --output-format json 사용 (session_id 추출)
+    - 시스템 프롬프트별 session_id 캐시 후 --resume 재사용
+      → subprocess는 유지하지만, Claude 측 캐시/세션 재사용으로 대폭 가속
 
     ⚠️ extended_thinking / temperature 미지원 (CLI 제한).
     고급 옵션이 필요하면 anthropic provider 사용.
-
-    Raises OAuthNotAvailableError if not logged in.
     """
     oauth_token = os.environ.get("CLAUDE_CODE_OAUTH_TOKEN", "")
     full_prompt = f"{system}\n\n{prompt}" if system else prompt
@@ -313,13 +321,32 @@ def _call_claude_oauth(prompt: str, system: str) -> str:
         for k, v in os.environ.items()
         if k not in ("CLAUDECODE", "CLAUDE_CODE_ENTRYPOINT", "CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS")
     }
-    env["CLAUDE_CODE_OAUTH_TOKEN"] = oauth_token
+    if oauth_token:
+        env["CLAUDE_CODE_OAUTH_TOKEN"] = oauth_token
 
     import shutil
+    import hashlib
+
     claude_bin = shutil.which("claude") or os.path.expanduser("~/.local/bin/claude")
 
+    # 시스템 프롬프트(+모델) 기준 세션 키
+    session_key = hashlib.sha1(f"{model or ''}::{system}".encode("utf-8")).hexdigest()
+    cached_session_id = _CLAUDE_OAUTH_SESSION_IDS.get(session_key)
+
+    cmd = [
+        claude_bin,
+        "-p",
+        "--dangerously-skip-permissions",
+        "--output-format", "json",
+    ]
+    if model:
+        cmd += ["--model", model]
+    if cached_session_id:
+        cmd += ["--resume", cached_session_id]
+    cmd += [full_prompt]
+
     result = subprocess.run(
-        [claude_bin, "-p", "--dangerously-skip-permissions", full_prompt],
+        cmd,
         capture_output=True,
         text=True,
         timeout=120,
@@ -328,10 +355,42 @@ def _call_claude_oauth(prompt: str, system: str) -> str:
     output = result.stdout.strip()
 
     _auth_errors = ("not logged in", "please run /login", "authentication", "unauthorized")
-    if any(e in output.lower() for e in _auth_errors) or result.returncode != 0:
-        raise OAuthNotAvailableError(f"Claude OAuth unavailable: {output[:120]}")
+    if result.returncode != 0 or any(e in (output + result.stderr).lower() for e in _auth_errors):
+        # resume 세션이 깨졌을 수 있으니 1회 재시도 (resume 없이)
+        if cached_session_id:
+            _CLAUDE_OAUTH_SESSION_IDS.pop(session_key, None)
+            cmd_retry = [
+                claude_bin,
+                "-p",
+                "--dangerously-skip-permissions",
+                "--output-format", "json",
+            ]
+            if model:
+                cmd_retry += ["--model", model]
+            cmd_retry += [full_prompt]
+            result = subprocess.run(
+                cmd_retry,
+                capture_output=True,
+                text=True,
+                timeout=120,
+                env=env,
+            )
+            output = result.stdout.strip()
 
-    return output
+        if result.returncode != 0:
+            err = (result.stderr or output or "").strip()
+            raise OAuthNotAvailableError(f"Claude OAuth unavailable: {err[:180]}")
+
+    # JSON 결과 파싱 (실패 시 text 그대로 반환)
+    try:
+        payload = json.loads(output)
+        session_id = payload.get("session_id")
+        if session_id:
+            _CLAUDE_OAUTH_SESSION_IDS[session_key] = session_id
+        text = payload.get("result") or ""
+        return text.strip()
+    except Exception:
+        return output
 
 
 # ── Anthropic API (유료, extended_thinking 지원) ──────────────────
