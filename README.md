@@ -10,7 +10,7 @@
 [![License: MIT](https://img.shields.io/badge/license-MIT-green?style=flat-square)](LICENSE)
 [![CI](https://img.shields.io/github/actions/workflow/status/dragon1086/amp-assistant/test.yml?style=flat-square&label=CI)](https://github.com/dragon1086/amp-assistant/actions)
 
-**[Why amp?](#why-amp-not-just-two-api-calls)** · **[Install](#install)** · **[How it works](#how-it-works)** · **[Benchmark](#benchmark)** · **[Prior Art](#prior-art--differentiation)** · **[Config](#configuration)**
+**[Why amp?](#why-amp-not-just-two-api-calls)** · **[Install](#install)** · **[How it works](#how-it-works)** · **[Benchmark](#benchmark)** · **[Prior Art](#prior-art--differentiation)** · **[Internals](#internals)** · **[Config](#configuration)**
 
 <br/>
 
@@ -198,6 +198,77 @@ No honest comparison omits this:
 - **Career / relationship advice (from benchmarks above)** → single expert models often match or beat amp here
 
 amp is purpose-built for: *strategy, resource allocation, ethics, multi-stakeholder decisions, and any question where a smart person could reasonably disagree.*
+
+---
+
+## Internals
+
+A brief map for contributors and technical evaluators. Full detail: [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md).
+
+### Knowledge Graph
+
+```
+Storage   : SQLite  (~/.amp/kg.db)  — single file, zero server
+Embeddings: OpenAI text-embedding-3-small (1536-dim)
+Search    : numpy cosine similarity — flat scan, O(n), sufficient to ~100K nodes
+Schema    : nodes(id, type, content, embedding, tags, metadata)
+          + edges(source_id, target_id, relation, weight=CSER)
+Adapter   : EmbeddingAdapter pattern — swap to local model without changing KG logic
+```
+
+Each synthesis is stored as a `question` node → `synthesis` node with a `PRODUCES` edge weighted by CSER. Future queries with semantically similar questions retrieve the highest-CSER past syntheses as context, so amp accumulates domain-specific reasoning history over time.
+
+### CSER Algorithm
+
+```python
+# 1. Extract idea units (sentence-level splitting + dedup)
+ideas_a = extract_ideas(agent_a_response)   # set of normalized sentences
+ideas_b = extract_ideas(agent_b_response)
+
+# 2. Jaccard-based emergence
+unique_a = ideas_a - ideas_b
+unique_b = ideas_b - ideas_a
+total    = ideas_a | ideas_b
+
+cser = (len(unique_a) + len(unique_b)) / len(total)   # range: 0.0–1.0
+
+# 3. Gate
+if cser < θ (0.30):
+    escalate to 4-round adversarial debate
+```
+
+CSER = 1.0 → every insight came from only one agent (maximum divergence).  
+CSER = 0.0 → both agents produced identical insights (echo chamber).
+
+### Domain Detection Pipeline
+
+```
+Query
+  │
+  ├─ 1. Static keyword match (O(1), 9 preset domains)  ──────► preset personas
+  │
+  ├─ 2. DomainRegistry.find()  — cosine similarity ≥ 0.78   ──► cached personas
+  │        (SQLite + text-embedding-3-small)
+  │
+  └─ 3. DomainRegistry.create() — gpt-5-mini generates:      ──► saved + returned
+             domain name, keywords, persona_a/b, sv_persona_a/b
+             + dedup merge check (≥ 0.75)
+```
+
+The registry grows with every unknown query. `amp domains` lists all learned domains.
+
+### Academic Foundations
+
+amp's design draws from the following literature:
+
+| Concept | Source |
+|---------|--------|
+| Multi-agent debate improves factuality | Du et al., *Improving Factuality and Reasoning via Multiagent Debate*, ICML 2024 |
+| Agent independence is necessary for emergence | Implicit in Du et al.; made explicit as amp's isolation invariant |
+| Bayesian coordination between agents | Zeng et al., *ECON: From Debate to Equilibrium*, ICML 2025 |
+| Same-vendor prior sharing as diversity problem | amp original (not in prior literature) |
+| CSER as emergence measurement | amp original |
+| KG as cross-session reasoning memory | Inspired by Cognee, Graphiti; amp's CSER-weighted edges are novel |
 
 ---
 
