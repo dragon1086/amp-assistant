@@ -200,7 +200,9 @@ class ClaudeExecutorPlugin(BasePlugin):
         self, claude_bin: str, task: str, workdir: Path
     ) -> tuple[str, str, int]:
         """Claude Code를 서브프로세스로 실행."""
-        env = os.environ.copy()
+        # CLAUDECODE 등 중첩 방지 변수 제거 (OpenClaw 환경 호환)
+        _STRIP = {"CLAUDECODE", "CLAUDE_CODE_ENTRYPOINT", "CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS"}
+        env = {k: v for k, v in os.environ.items() if k not in _STRIP}
 
         # OAuth 토큰 주입 (zshrc에서 로드 시도)
         if not env.get("CLAUDE_CODE_OAUTH_TOKEN"):
