@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "amp-reasoning"
-version = "0.1.0"
+version = "0.1.1"
 description = "Two AIs argue. You get a better answer. Multi-agent emergent reasoning engine."
 readme = "README.md"
 license = { text = "MIT" }
@@ -25,6 +25,7 @@ classifiers = [
 dependencies = [
     "openai>=1.30.0",
     "anthropic>=0.40.0",
+    "numpy>=1.26.0",
     "pyyaml>=6.0",
     "click>=8.1",
     "rich>=13.0",
