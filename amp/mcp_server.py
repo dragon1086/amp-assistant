@@ -128,9 +128,14 @@ async def _stream_emergent(id_: Any, query: str, rounds: int) -> AsyncGenerator[
             yield chunk
 
         # emergent.run은 동기 함수 → asyncio 스레드풀 실행
-        result = await asyncio.get_event_loop().run_in_executor(
-            None,
-            lambda: emergent.run(query=query, context=[], config=config, rounds=rounds),
+        # rounds=2: 병렬화로 ~30s, rounds=4: ~60s → timeout을 여유있게 설정
+        mcp_timeout = 120 if rounds == 2 else 180
+        result = await asyncio.wait_for(
+            asyncio.get_event_loop().run_in_executor(
+                None,
+                lambda: emergent.run(query=query, context=[], config=config, rounds=rounds),
+            ),
+            timeout=mcp_timeout,
         )
 
         async for chunk in progress("✅ 분석 완료. 결과 합성 중..."):
@@ -140,6 +145,9 @@ async def _stream_emergent(id_: Any, query: str, rounds: int) -> AsyncGenerator[
         final = _rpc_result(id_, {"content": [{"type": "text", "text": content}]})
         yield _sse_event(final)
 
+    except asyncio.TimeoutError:
+        logger.error("emergent timeout")
+        yield _sse_event(_rpc_error(id_, -32000, "분석 시간 초과 (180s). 잠시 후 다시 시도하세요."))
     except Exception as e:
         logger.exception("emergent 스트리밍 오류")
         yield _sse_event(_rpc_error(id_, -32000, str(e)[:200]))

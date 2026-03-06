@@ -19,6 +19,7 @@ Agent A & B 모두 config.yaml에서 자유롭게 설정 가능:
 """
 
 import json
+from concurrent.futures import ThreadPoolExecutor, TimeoutError as FutureTimeoutError
 
 from amp.core.auto_persona import generate_personas
 from amp.core.kg import KnowledgeGraph
@@ -387,18 +388,37 @@ def run(query: str, context: list[dict], config: dict, on_progress=None,
         kg_bridge.save_to_emergent_kg(query, _result_4r, async_mode=True)
         return _result_4r
 
-    # ── rounds=2 (default): Independent analysis ─────────────────────────────
+    # ── rounds=2 (default): Independent analysis — 병렬 실행 ──────────────────
+    # Agent A와 B는 서로 출력을 보지 않으므로 완전히 병렬 실행 가능
+    # 직렬 대비 ~50% 시간 절약 (subprocess 2번 → 동시 실행)
     _p("agent_a_start", persona=personas.get("persona_a", "Agent A"), model=f"{prov_a}/{mod_a}")
-    agent_a_text, prov_a_actual = _call_with_fallback(
-        agent_a_prompt, agent_a_system, prov_a, mod_a, temp_a, reasoning_effort=reason_a
-    )
-    _p("agent_a_done", persona=personas.get("persona_a", "Agent A"), preview=agent_a_text[:120])
-
-    # Agent B는 Agent A 출력을 절대 보지 않음 (독립성 불변 조건)
     _p("agent_b_start", persona=personas.get("persona_b", "Agent B"), model=f"{prov_b}/{mod_b}")
-    agent_b_text, prov_b_actual = _call_with_fallback(
-        agent_b_prompt, agent_b_system, prov_b, mod_b, temp_b, reasoning_effort=reason_b
-    )
+
+    per_agent_timeout = config.get("amp", {}).get("timeout", 90)
+
+    def _run_a():
+        return _call_with_fallback(
+            agent_a_prompt, agent_a_system, prov_a, mod_a, temp_a, reasoning_effort=reason_a
+        )
+
+    def _run_b():
+        return _call_with_fallback(
+            agent_b_prompt, agent_b_system, prov_b, mod_b, temp_b, reasoning_effort=reason_b
+        )
+
+    with ThreadPoolExecutor(max_workers=2) as pool:
+        future_a = pool.submit(_run_a)
+        future_b = pool.submit(_run_b)
+        try:
+            agent_a_text, prov_a_actual = future_a.result(timeout=per_agent_timeout)
+        except FutureTimeoutError:
+            agent_a_text, prov_a_actual = f"[Agent A timeout after {per_agent_timeout}s]", prov_a
+        try:
+            agent_b_text, prov_b_actual = future_b.result(timeout=per_agent_timeout)
+        except FutureTimeoutError:
+            agent_b_text, prov_b_actual = f"[Agent B timeout after {per_agent_timeout}s]", prov_b
+
+    _p("agent_a_done", persona=personas.get("persona_a", "Agent A"), preview=agent_a_text[:120])
     _p("agent_b_done", persona=personas.get("persona_b", "Agent B"), preview=agent_b_text[:120])
 
     # fallback 발생 시 same_vendor 재계산 (다양성 로직에 반영)

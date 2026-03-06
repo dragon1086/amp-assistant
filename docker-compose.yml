@@ -1,0 +1,17 @@
+version: "3.9"
+
+services:
+  amp:
+    build: .
+    container_name: amp-server
+    ports:
+      - "3010:3010"
+    environment:
+      - OPENAI_API_KEY=${OPENAI_API_KEY}
+      - ANTHROPIC_API_KEY=${ANTHROPIC_API_KEY}  # optional: 있으면 subprocess 대신 API 직접 호출
+    volumes:
+      - amp_data:/root/.amp  # KG DB, config 영속 저장
+    restart: unless-stopped
+
+volumes:
+  amp_data:

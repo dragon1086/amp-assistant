@@ -1,356 +1,205 @@
-# amp
+# amp — AI Debate Engine
 
-**Two minds. One answer.**
+> **Two AIs argue. You get a better answer.**
 
-amp is a local, open-source, privacy-first personal assistant powered by **emergent 2-agent collaboration**. Two AI agents independently analyze every complex query, then reconcile — producing richer, more reliable answers than any single-agent system.
-
-All your data stays on your machine. No cloud sync. No telemetry.
-
----
-
-## Why emergent collaboration?
-
-Most AI assistants use a single model call. amp uses three modes, automatically selected:
-
-| Mode | When | How |
-|------|------|-----|
-| **Solo** | Simple facts, greetings | 1 LLM call — fast and cheap |
-| **Pipeline** | Code, documents, step-by-step | Plan → Solve → Review → Fix |
-| **Emergent** | Analysis, decisions, reviews | A proposes → B attacks → Reconcile → Verify |
-
-The emergent mode is the killer feature. Here's what it catches:
-
-```
-> 이 마케팅 문구 어때? "우리 제품은 경쟁사보다 10배 빠릅니다"
-
-Solo mode answer:
-  "강력한 주장이네요! 효과적인 마케팅 문구입니다."
-
-Emergent mode:
-  [Agent A — Analyst]
-  강조 효과는 충분하지만 구체적인 벤치마크 데이터가 없으면
-  소비자 신뢰를 얻기 어렵습니다.
-
-  [Agent B — Critic]
-  "10배"라는 수치는 측정 기준이 불명확합니다. 어떤 조건에서의
-  10배인지 명시하지 않으면 법적 리스크가 될 수 있습니다.
-
-  ━━━━━━━━━━━━━━━━━━━━
-  ✅ 결론: 주장을 뒷받침할 구체적인 벤치마크 수치와 측정 조건을
-  명시하세요. "특정 조건 X에서 평균 10배 빠름 (벤치마크 참조)" 형식
-  으로 수정하면 설득력과 법적 안전성이 모두 높아집니다.
-  📊 신뢰도: CSER 0.71 ✅ (높음)
-  ━━━━━━━━━━━━━━━━━━━━
-```
-
-**CSER** (Cognitive Synthesis Emergence Rate) measures how much unique insight each agent contributed. High CSER = healthy divergent thinking. Low CSER = echo chamber.
+[![PyPI](https://img.shields.io/pypi/v/amp-reasoning)](https://pypi.org/project/amp-reasoning/)
+[![Python 3.11+](https://img.shields.io/badge/python-3.11+-blue)](https://python.org)
+[![License: MIT](https://img.shields.io/badge/License-MIT-green)](LICENSE)
 
 ---
 
-## Quick install
+## Why amp?
 
-**한 줄 설치 (권장):**
-```bash
-curl -fsSL https://raw.githubusercontent.com/amp-assistant/amp/main/install.sh | bash
+A single AI has blind spots — it trained on the same data, has the same biases, and often gives the "safe" answer. **amp makes two independent AIs argue about your question, then synthesizes the best answer from both.**
+
 ```
-> pipx, uv, pip 순으로 자동 감지해서 설치합니다.
-
-**pipx로 직접:**
-```bash
-pipx install git+https://github.com/amp-assistant/amp
-amp setup   # 대화형 설정 wizard (API 키, 모델, 텔레그램 토큰)
-amp "hello"
-```
-
-**uv로 (가장 빠름):**
-```bash
-uv tool install git+https://github.com/amp-assistant/amp
-amp setup && amp "hello"
+Your question
+     ↓
+Agent A (GPT-5.2) ──────────────── Agent B (Claude Sonnet)
+    [독립 분석, 병렬]                    [독립 분석, 병렬]
+         ↓                                    ↓
+         └─────────── Reconciler ─────────────┘
+                           ↓
+              Better Answer + CSER score
+              (두 AI가 얼마나 다른 시각을 가졌는지)
 ```
 
-**PyPI (릴리스 버전):**
+**CSER** (Cross-agent Semantic Entropy Ratio): 두 AI의 의견 다양성 측정 지표. 높을수록 더 독립적인 사고.
+
+---
+
+## Install
+
 ```bash
-pip install amp-assistant
-amp setup && amp "hello"
+pip install amp-reasoning
+amp init   # API 키 설정 (1분)
 ```
 
-**소스에서:**
+**원클릭 설치:**
 ```bash
-git clone https://github.com/amp-assistant/amp
-cd amp && pip install -e .
-amp setup
+curl -fsSL https://raw.githubusercontent.com/amp-reasoning/amp/main/install.sh | bash
 ```
 
 ---
 
-## Usage
-
-### Single query
+## Quick Start
 
 ```bash
-amp "내일 있을 투자자 미팅 준비 어떻게 해야 할까?"
-amp --mode emergent "이 계획의 문제점이 뭘까?"
-amp --mode pipeline "Python으로 CSV 파일 정렬하는 코드 짜줘"
-amp --mode solo "파이썬 현재 버전이 뭐야?"
+# 바로 사용
+amp "비트코인 지금 사야 할까?"
+amp "React vs Vue in 2026 — which should I pick?"
+amp "스타트업에서 CTO 역할을 맡아야 할까?"
+
+# 4라운드 심층 토론 (더 오래 걸리지만 더 깊음)
+amp --mode emergent "AGI가 2027년 전에 가능할까?"
+
+# MCP 서버 (Claude Desktop, Cursor, OpenClaw 연동)
+amp serve
 ```
 
-### Interactive REPL
+---
 
-```bash
-amp
+## How It Works
 
-> 안녕!
-amp (solo): 안녕하세요! 무엇을 도와드릴까요?
+### 2-Round (기본): 독립 분석
+Agent A와 B가 **서로의 답을 모른 채** 독립적으로 분석.
+→ 진짜 독립적 사고 → 높은 CSER → 더 좋은 합성
 
-> 이 문장 검토해줘: "우리 제품은 경쟁사보다 10배 빠릅니다"
-[Emergent mode auto-selected]
-...
-
-> /stats
-KG: 3 nodes, 1 edges | Sessions: 2 | CSER avg: 0.65
-
-> /mode pipeline     # force pipeline mode
-> /clear             # clear conversation history
-> /help              # show all commands
+### 4-Round (심층): 순차 토론
 ```
+Round 1: A 분석
+Round 2: B가 A를 반박
+Round 3: A가 B의 반박에 재반론
+Round 4: B 최종 반박
+        → Reconciler 합성
+```
+
+### CSER Gate
+두 AI 답변이 너무 비슷하면 (CSER < 0.30) → 자동으로 4-round로 업그레이드.
+더 다양한 시각을 강제로 끌어냄.
 
 ---
 
 ## Configuration
 
-amp reads `~/.amp/config.yaml`:
+```bash
+amp init  # 대화형 설정
+```
+
+또는 `~/.amp/config.yaml` 직접 편집:
 
 ```yaml
-llm:
-  provider: openai        # or anthropic
-  model: gpt-4o-mini      # default (cheap + fast)
-  api_key: ${OPENAI_API_KEY}
-
-telegram:
-  token: ${TELEGRAM_BOT_TOKEN}
-
-amp:
-  default_mode: auto      # auto | solo | pipeline | emergent
-  kg_path: ~/.amp/kg.json
-```
-
-Run `amp setup` for interactive configuration.
-
-**Supported models:**
-- OpenAI: `gpt-4o-mini` (default), `gpt-4o`, `gpt-4.1`
-- Anthropic: `claude-haiku-4-5-20251001`, `claude-sonnet-4-6`
-
----
-
-## 같은 벤더 강제 다양성 (Same-Vendor Forced Diversity)
-
-Agent A와 B를 **같은 제공자**로 설정하면 amp가 자동으로 강제 다양성 모드를 활성화합니다.
-
-```
-⚠ 강제 다양성 모드 활성 — GPT×GPT 동일 벤더 감지
-```
-
-### 동작 방식
-
-**같은 벤더 감지** (자동):
-- `openai + openai` → 같은 벤더
-- `anthropic + anthropic_oauth` → 같은 벤더  
-- `openai + anthropic` → 교차 벤더 (일반 모드)
-
-**강제 다양성 적용:**
-
-| 설정 | Agent A | Agent B |
-|------|---------|---------|
-| 페르소나 | 극단 대비 팩 (도메인별) | 극단 대비 팩 |
-| Temperature | 0.3 (정밀/일관성) | 1.1 (창의/돌발) |
-| 역할 제약 | "데이터/수치/증거만" | "통념에 정면 도전" |
-
-**도메인별 극단 페르소나 (예시):**
-- `investment`: 퀀트 리스크 애널리스트 ↔ 모멘텀 성장 투자자
-- `business`: 리스크 관리 CFO ↔ 비전형 창업가
-- `career`: 커리어 최적화 전략가 ↔ 리스크 베팅 어드벤처러
-- `legal_contract`: 독소조항 사냥꾼 ↔ 사업 현실주의자
-- (10개 도메인 자동 감지)
-
-### CSER 비교
-
-| 구성 | CSER 예상 | 비고 |
-|------|-----------|------|
-| 교차 벤더 (GPT + Claude) | **0.8~0.9** | 구조적 최적 |
-| 같은 벤더 + 극단팩 + temp 차별화 | **0.65~0.75** | 실용적 대안 |
-| 같은 벤더 (다양성 없음) | 0.4~0.6 | 에코챔버 위험 |
-
-교차 벤더가 구조적으로 우위이지만, 같은 벤더도 강제 다양성으로 실용적 수준(0.65+)까지 끌어올립니다.
-
-### 설정 예시
-
-```yaml
-# ~/.amp/config.yaml
-llm:
+agents:
   agent_a:
     provider: openai
-    model: gpt-4o
+    model: gpt-5.2          # 최신 GPT-5 계열
+    reasoning_effort: medium # none | low | medium | high | xhigh
+
   agent_b:
-    provider: openai          # 같은 벤더 → 자동으로 강제 다양성 적용
-    model: gpt-4o-mini
+    provider: anthropic     # ANTHROPIC_API_KEY 있으면 (빠름)
+    # provider: anthropic_oauth  # Claude OAuth 무료 (느림, subprocess)
+    model: claude-sonnet-4-6
+
+amp:
+  parallel: true   # Agent A+B 병렬 실행 (기본: true, ~50% 속도 향상)
+  timeout: 90      # 에이전트당 타임아웃 (초)
+  kg_path: ~/.amp/kg.db  # 지식 그래프 저장 경로
+```
+
+### Provider 옵션
+
+| provider | 속도 | 비용 | 조건 |
+|----------|------|------|------|
+| `openai` | ⚡⚡⚡ | 유료 | OPENAI_API_KEY |
+| `anthropic` | ⚡⚡⚡ | 유료 | ANTHROPIC_API_KEY |
+| `anthropic_oauth` | ⚡ | 무료 | Claude CLI 설치 |
+| `local` | ⚡⚡ | 무료 | Ollama 실행 중 |
+
+---
+
+## MCP Server
+
+Claude Desktop, Cursor, OpenClaw 등 MCP 호환 클라이언트에서 사용:
+
+```bash
+amp serve  # http://127.0.0.1:3010
+```
+
+MCP 설정에 추가:
+```json
+{
+  "amp": {
+    "url": "http://127.0.0.1:3010"
+  }
+}
+```
+
+사용 가능한 도구:
+- `analyze` — 2-round 독립 분석 (15~30초)
+- `debate` — 4-round 심층 토론 (30~60초)
+- `quick_answer` — 단일 LLM 빠른 답변 (3초)
+
+---
+
+## Docker
+
+```bash
+# 서버만
+docker run -e OPENAI_API_KEY=... -e ANTHROPIC_API_KEY=... -p 3010:3010 ghcr.io/amp-reasoning/amp
+
+# docker-compose
+OPENAI_API_KEY=... ANTHROPIC_API_KEY=... docker-compose up
 ```
 
 ---
 
-## Knowledge Graph
+## Python API
 
-Every emergent analysis is automatically saved to a local JSON knowledge graph at `~/.amp/kg.json`. amp builds a personal memory of your decisions and insights over time — all local, all yours.
+```python
+from amp.core import emergent
+from amp.config import load_config
 
----
+config = load_config()
+result = emergent.run(query="Should I use Rust or Go?", context=[], config=config)
 
-## Telegram Bot
-
-### 1. BotFather에서 토큰 발급
-
-1. 텔레그램에서 [@BotFather](https://t.me/botfather) 검색 → 대화 시작
-2. `/newbot` 입력 → 봇 이름(표시명) 입력 → 봇 사용자명 입력 (`_bot` 으로 끝나야 함)
-3. BotFather가 `123456789:ABCdef...` 형태의 API 토큰을 발급해줌
-
-### 2. 토큰 설정
-
-**방법 A — 환경변수 (권장)**
-```bash
-export TELEGRAM_BOT_TOKEN=123456789:ABCdef...
-```
-
-`.bashrc` / `.zshrc`에 추가하면 영구 적용됩니다.
-
-**방법 B — .env 파일**
-```bash
-# ~/.amp/.env
-TELEGRAM_BOT_TOKEN=123456789:ABCdef...
-```
-
-**방법 C — amp setup 마법사**
-```bash
-amp setup   # Step 3에서 텔레그램 토큰 입력
-```
-
-### 3. 봇 시작
-
-```bash
-bash start_bot.sh
-```
-
-또는 직접 실행:
-```bash
-python -m amp.interfaces.telegram_bot
-```
-
-### 봇 커맨드
-
-| 커맨드 | 설명 |
-|--------|------|
-| `/start` | 시작 메시지 및 명령어 안내 |
-| `/mode` | 현재 모드 확인 / 변경 (`auto`\|`solo`\|`pipeline`\|`emergent`) |
-| `/model` | Agent A/B LLM 모델 확인 / 변경 |
-| `/plugins` | 플러그인 목록 및 활성화 상태 |
-| `/plugin on <이름>` | 플러그인 활성화 |
-| `/plugin off <이름>` | 플러그인 비활성화 |
-| `/imagine <프롬프트>` | 이미지 생성 (image_gen 플러그인 필요) |
-| `/stats` | KG 통계 |
-| `/clear` | 대화 기록 초기화 |
-
-### 예시
-
-```
-/mode emergent
-이 아키텍처 설계의 문제점이 뭘까?
-
-/plugin on image_vision
-[사진 전송]  → 이미지 분석
-
-/imagine 한국의 봄, 벚꽃, 수채화 스타일
-
-/model a gpt-4o
-/model b claude-sonnet-4-6
+print(result["answer"])
+print(f"CSER: {result['cser']:.2f}")  # 두 AI 시각 다양성
+print(f"Agreements: {result['agreements']}")
 ```
 
 ---
 
-## Plugins
+## Performance (2026-03 기준)
 
-amp는 외부 플러그인으로 기능을 확장할 수 있습니다. 플러그인은 `~/.amp/plugins/`에 설치됩니다.
+| 구성 | 평균 응답시간 | 비용 |
+|------|-------------|------|
+| GPT-5.2 + Claude Sonnet (API, 병렬) | ~18초 | $0.03~0.08 |
+| GPT-5.2 + Claude OAuth (병렬) | ~35초 | $0.01~0.03 |
+| GPT-5.2 + GPT-5.2 (같은 벤더) | ~15초 | $0.02~0.05 |
 
-### 플러그인 관리
-
-```bash
-# 설치
-amp plugin install https://github.com/user/my-plugin   # GitHub 리포
-amp plugin install /path/to/my-plugin/                 # 로컬 디렉토리
-amp plugin install /path/to/single_plugin.py           # 단일 .py 파일
-
-# 목록
-amp plugin list
-
-# 제거
-amp plugin remove my-plugin
-
-# 새 플러그인 만들기
-amp plugin new my-plugin   # ~/.amp/plugins/my-plugin/ 스캐폴딩 생성
-```
-
-### REPL에서 플러그인 토글
-
-```
-\plugin list              # 등록된 플러그인 목록
-\plugin on image_vision   # 플러그인 활성화
-\plugin off image_gen     # 플러그인 비활성화
-```
-
-자세한 플러그인 개발 가이드: [`docs/plugin-guide.md`](docs/plugin-guide.md)
+병렬화로 기존 대비 **~50% 속도 향상** (v0.1.0+)
 
 ---
 
-## Architecture
+## Why Cross-Vendor?
 
-```
-query
-  │
-  ▼
-router.py ──────────────────────────────────┐
-  │ (keyword + length heuristics)           │
-  │                                         │
-  ├─ solo ──────────────────────────────────┤
-  │   └─ 1 LLM call                        │
-  │                                         │
-  ├─ pipeline ──────────────────────────────┤
-  │   └─ plan → solve → review → fix       │
-  │      (4 sequential LLM calls)          │
-  │                                         │
-  └─ emergent ─────────────────────────────┘
-      ├─ Agent A (analyst)  ─┐ parallel, independent
-      ├─ Agent B (critic)   ─┘
-      ├─ Reconciler (sees both → synthesize)
-      └─ Verifier (logical consistency check)
-           │
-           └─ auto-save to KG
-```
+GPT와 Claude는 다른 회사가, 다른 데이터로, 다른 방법으로 훈련했습니다. 같은 질문에 다른 관점을 가질 가능성이 높습니다. 이것이 amp의 핵심 — 교차 벤더 합성.
+
+같은 벤더 (GPT+GPT)도 동작하지만, amp는 자동으로 페르소나를 극단적으로 다르게 설정해 다양성을 확보합니다.
 
 ---
 
 ## Contributing
 
-amp is built on the idea that **cognitive diversity produces better answers**. The emergent engine is inspired by research in ensemble methods, adversarial collaboration, and multi-agent debate ([Du et al., 2023](https://arxiv.org/abs/2305.14325); [Liang et al., 2023](https://arxiv.org/abs/2305.19118)).
-
-Contributions welcome:
-- New routing heuristics
-- Additional LLM provider adapters
-- Alternative emergent synthesis strategies
-- Evaluation benchmarks for CSER
-
 ```bash
+git clone https://github.com/amp-reasoning/amp
+cd amp
 pip install -e ".[dev]"
-pytest tests/
+pytest
 ```
 
 ---
 
 ## License
 
-MIT — use it however you want.
+MIT © 2026 amp contributors

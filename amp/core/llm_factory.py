@@ -44,6 +44,10 @@ def call_llm(
     if provider == "openai":
         return _call_openai(prompt, system, model, temperature=temperature, **kwargs)
     elif provider in ("anthropic_oauth", "claude_oauth"):
+        # ANTHROPIC_API_KEY 있으면 API 직접 호출 (subprocess 대비 3~10배 빠름)
+        if os.environ.get("ANTHROPIC_API_KEY"):
+            return _call_anthropic(prompt, system, model or "claude-sonnet-4-6",
+                                   temperature=temperature, **kwargs)
         return _call_claude_oauth(prompt, system)          # OAuth는 temp/thinking 미지원
     elif provider == "anthropic":
         return _call_anthropic(prompt, system, model, temperature=temperature, **kwargs)
@@ -123,7 +127,7 @@ def _call_claude_oauth(prompt: str, system: str) -> str:
         [claude_bin, "-p", "--dangerously-skip-permissions", full_prompt],
         capture_output=True,
         text=True,
-        timeout=90,
+        timeout=120,
         env=env,
     )
     output = result.stdout.strip()
