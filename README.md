@@ -4,27 +4,34 @@
 
 [![PyPI](https://img.shields.io/pypi/v/amp-reasoning)](https://pypi.org/project/amp-reasoning/)
 [![Python 3.11+](https://img.shields.io/badge/python-3.11+-blue)](https://python.org)
-[![License: MIT](https://img.shields.io/badge/License-MIT-green)](LICENSE)
+[![License: MIT](https://img.shields.io/badge/License-MIT-green.svg)](LICENSE)
+[![CI](https://github.com/dragon1086/amp-assistant/actions/workflows/test.yml/badge.svg)](https://github.com/dragon1086/amp-assistant/actions)
+
+**Read this in other languages:** [한국어](README.ko.md) · [日本語](README.ja.md) · [中文](README.zh.md) · [Español](README.es.md)
 
 ---
 
 ## Why amp?
 
-A single AI has blind spots — it trained on the same data, has the same biases, and often gives the "safe" answer. **amp makes two independent AIs argue about your question, then synthesizes the best answer from both.**
+A single AI has blind spots — it trained on the same data, carries the same biases, and tends to give the "safe" answer. **amp runs two independent AIs in parallel, lets them argue, and synthesizes a better answer from both perspectives.**
 
 ```
 Your question
-     ↓
-Agent A (GPT-5.2) ──────────────── Agent B (Claude Sonnet)
-    [독립 분석, 병렬]                    [독립 분석, 병렬]
-         ↓                                    ↓
-         └─────────── Reconciler ─────────────┘
-                           ↓
-              Better Answer + CSER score
-              (두 AI가 얼마나 다른 시각을 가졌는지)
+       │
+       ├──────────────────────────────────────┐
+       ▼                                      ▼
+  Agent A (GPT-5)                      Agent B (Claude)
+  [independent analysis]               [independent analysis]
+       │                                      │
+       └──────────────┬───────────────────────┘
+                      ▼
+                 Reconciler
+                      │
+                      ▼
+         Final Answer  +  CSER score
 ```
 
-**CSER** (Cross-agent Semantic Entropy Ratio): 두 AI의 의견 다양성 측정 지표. 높을수록 더 독립적인 사고.
+**CSER** (Cross-agent Semantic Entropy Ratio) measures how differently the two AIs thought about your question. Higher CSER → more independent perspectives → better synthesis.
 
 ---
 
@@ -32,14 +39,17 @@ Agent A (GPT-5.2) ──────────────── Agent B (Clau
 
 ```bash
 pip install amp-reasoning
-amp init   # API 키 설정 (1분)
-# 또는: API 키 없이 OAuth 무료 사용
-amp login  # ChatGPT Plus + Claude Max 구독자 → 비용 0원
+amp init        # interactive setup (~1 min)
 ```
 
-**원클릭 설치:**
+**Free with OAuth** (no API keys needed — requires ChatGPT Plus + Claude Max subscriptions):
 ```bash
-curl -fsSL https://raw.githubusercontent.com/amp-reasoning/amp/main/install.sh | bash
+amp login       # authenticates both providers via browser OAuth
+```
+
+**One-line installer:**
+```bash
+curl -fsSL https://raw.githubusercontent.com/dragon1086/amp-assistant/main/install.sh | bash
 ```
 
 ---
@@ -47,15 +57,15 @@ curl -fsSL https://raw.githubusercontent.com/amp-reasoning/amp/main/install.sh |
 ## Quick Start
 
 ```bash
-# 바로 사용
-amp "비트코인 지금 사야 할까?"
-amp "React vs Vue in 2026 — which should I pick?"
-amp "스타트업에서 CTO 역할을 맡아야 할까?"
+# Ask anything
+amp "Should I buy Bitcoin right now?"
+amp "React vs Vue in 2026 — which should I pick for a new project?"
+amp "What are the real trade-offs between Rust and Go?"
 
-# 4라운드 심층 토론 (더 오래 걸리지만 더 깊음)
-amp --mode emergent "AGI가 2027년 전에 가능할까?"
+# Deep 4-round debate (takes longer, goes deeper)
+amp --mode emergent "Will AGI arrive before 2028?"
 
-# MCP 서버 (Claude Desktop, Cursor, OpenClaw 연동)
+# Start MCP server (for Claude Desktop, Cursor, OpenClaw, etc.)
 amp serve
 ```
 
@@ -63,78 +73,88 @@ amp serve
 
 ## How It Works
 
-### 2-Round (기본): 독립 분석
-Agent A와 B가 **서로의 답을 모른 채** 독립적으로 분석.
-→ 진짜 독립적 사고 → 높은 CSER → 더 좋은 합성
+### Default mode — 2-round independent analysis
+Agent A and Agent B analyze your question **without seeing each other's answers**.
+This guarantees genuine independence → high CSER → better synthesis.
 
-### 4-Round (심층): 순차 토론
+### Emergent mode — 4-round structured debate
 ```
-Round 1: A 분석
-Round 2: B가 A를 반박
-Round 3: A가 B의 반박에 재반론
-Round 4: B 최종 반박
-        → Reconciler 합성
+Round 1:  Agent A analyzes
+Round 2:  Agent B challenges A's reasoning
+Round 3:  Agent A rebuts B's challenge
+Round 4:  Agent B delivers final counterpoint
+              └──► Reconciler synthesizes
 ```
 
 ### CSER Gate
-두 AI 답변이 너무 비슷하면 (CSER < 0.30) → 자동으로 4-round로 업그레이드.
-더 다양한 시각을 강제로 끌어냄.
+If both AIs agree too strongly (CSER < 0.30), amp automatically escalates to 4-round debate
+to force more diverse perspectives before synthesizing.
+
+### Knowledge Graph
+amp maintains a local knowledge graph (`~/.amp/kg.db`) that accumulates context across
+sessions. Over time, amp gets better at your specific domain.
 
 ---
 
 ## Configuration
 
 ```bash
-amp init  # 대화형 설정
+amp init   # interactive wizard
+amp setup  # full settings (models, Telegram bot, plugins)
 ```
 
-또는 `~/.amp/config.yaml` 직접 편집:
+Or edit `~/.amp/config.yaml` directly:
 
 ```yaml
 agents:
   agent_a:
     provider: openai
-    model: gpt-5.4          # 최신 GPT-5 계열
-    reasoning_effort: medium # none | low | medium | high | xhigh
+    model: gpt-5.2             # gpt-5.2 | gpt-5.4 | gpt-5.4-mini
+    reasoning_effort: high     # none | low | medium | high | xhigh
 
   agent_b:
-    provider: anthropic     # ANTHROPIC_API_KEY 있으면 (빠름)
-    # provider: anthropic_oauth  # Claude OAuth 무료 (느림, subprocess)
-    model: claude-sonnet-4-6
+    provider: anthropic        # fastest with ANTHROPIC_API_KEY
+    # provider: anthropic_oauth  # free via Claude OAuth (slower)
+    model: claude-sonnet-4-6   # claude-opus-4-6 | claude-haiku-4-6
 
 amp:
-  parallel: true   # Agent A+B 병렬 실행 (기본: true, ~50% 속도 향상)
-  timeout: 90      # 에이전트당 타임아웃 (초)
-  kg_path: ~/.amp/kg.db  # 지식 그래프 저장 경로
+  parallel: true      # run Agent A+B in parallel (default: true, ~50% faster)
+  timeout: 90         # per-agent timeout in seconds
+  kg_path: ~/.amp/kg.db
 ```
 
-### Provider 옵션
+### Provider Options
 
-| provider | 속도 | 비용 | 조건 |
-|----------|------|------|------|
-| `openai` | ⚡⚡⚡ | 유료 | OPENAI_API_KEY |
-| `openai_oauth` | ⚡⚡⚡ | **무료** | ChatGPT Plus/Pro + `amp login` |
-| `anthropic` | ⚡⚡⚡ | 유료 | ANTHROPIC_API_KEY |
-| `anthropic_oauth` | ⚡⚡ | **무료** | Claude Max/Pro + `amp login` |
-| `local` | ⚡⚡ | 무료 | Ollama 실행 중 |
+| Provider | Speed | Cost | Requirement |
+|----------|-------|------|-------------|
+| `openai` | ⚡⚡⚡ | Paid | `OPENAI_API_KEY` |
+| `openai_oauth` | ⚡⚡⚡ | **Free** | ChatGPT Plus/Pro + `amp login` |
+| `anthropic` | ⚡⚡⚡ | Paid | `ANTHROPIC_API_KEY` |
+| `anthropic_oauth` | ⚡⚡ | **Free** | Claude Max/Pro + `amp login` |
+| `gemini` | ⚡⚡⚡ | Paid | `GEMINI_API_KEY` |
+| `deepseek` | ⚡⚡⚡ | Cheap | `DEEPSEEK_API_KEY` |
+| `mistral` | ⚡⚡⚡ | Cheap | `MISTRAL_API_KEY` |
+| `xai` | ⚡⚡⚡ | Paid | `XAI_API_KEY` |
+| `local` | ⚡⚡ | Free | Ollama running |
 
-**💡 완전 무료 조합:**
+**Completely free setup (with ChatGPT Plus + Claude Max):**
 ```bash
-amp login  # ChatGPT Plus + Claude Max 구독 있으면 API 비용 0원
-# → openai_oauth (GPT-5.4) × anthropic_oauth (Claude Sonnet) 자동 설정
+amp login
+# → Automatically configures openai_oauth × anthropic_oauth
+# → $0 API cost
 ```
 
 ---
 
 ## MCP Server
 
-Claude Desktop, Cursor, OpenClaw 등 MCP 호환 클라이언트에서 사용:
+Works with Claude Desktop, Cursor, OpenClaw, and any MCP-compatible client:
 
 ```bash
-amp serve  # http://127.0.0.1:3010
+amp serve   # starts at http://127.0.0.1:3010
 ```
 
-MCP 설정에 추가:
+Add to your MCP config:
 ```json
 {
   "amp": {
@@ -143,21 +163,27 @@ MCP 설정에 추가:
 }
 ```
 
-사용 가능한 도구:
-- `analyze` — 2-round 독립 분석 (15~30초)
-- `debate` — 4-round 심층 토론 (30~60초)
-- `quick_answer` — 단일 LLM 빠른 답변 (3초)
+Available tools:
+| Tool | Description | Typical latency |
+|------|-------------|-----------------|
+| `analyze` | 2-round independent analysis | 15–30s |
+| `debate` | 4-round structured debate | 30–60s |
+| `quick_answer` | single-LLM fast answer | ~3s |
 
 ---
 
 ## Docker
 
 ```bash
-# 서버만
-docker run -e OPENAI_API_KEY=... -e ANTHROPIC_API_KEY=... -p 3010:3010 ghcr.io/amp-reasoning/amp
+# Run the MCP server
+docker run \
+  -e OPENAI_API_KEY=sk-... \
+  -e ANTHROPIC_API_KEY=sk-ant-... \
+  -p 3010:3010 \
+  ghcr.io/dragon1086/amp-assistant
 
-# docker-compose
-OPENAI_API_KEY=... ANTHROPIC_API_KEY=... docker-compose up
+# Or with docker-compose
+OPENAI_API_KEY=sk-... ANTHROPIC_API_KEY=sk-ant-... docker-compose up
 ```
 
 ---
@@ -169,43 +195,56 @@ from amp.core import emergent
 from amp.config import load_config
 
 config = load_config()
-result = emergent.run(query="Should I use Rust or Go?", context=[], config=config)
+result = emergent.run(
+    query="Should I use Rust or Go for my backend?",
+    context=[],
+    config=config,
+)
 
 print(result["answer"])
-print(f"CSER: {result['cser']:.2f}")  # 두 AI 시각 다양성
-print(f"Agreements: {result['agreements']}")
+print(f"CSER:       {result['cser']:.2f}")        # how different the two AIs were
+print(f"Agreements: {result['agreements']}")       # what both AIs agreed on
+print(f"Conflicts:  {result['conflicts']}")        # where they disagreed
 ```
 
 ---
 
-## Performance (2026-03 기준)
+## Performance
 
-| 구성 | 평균 응답시간 | 비용 |
-|------|-------------|------|
-| GPT-5.2 + Claude Sonnet (API, 병렬) | ~18초 | $0.03~0.08 |
-| GPT-5.2 + Claude OAuth (병렬) | ~35초 | $0.01~0.03 |
-| GPT-5.2 + GPT-5.2 (같은 벤더) | ~15초 | $0.02~0.05 |
+Benchmarks on Apple M-series (2026-03, parallel mode):
 
-병렬화로 기존 대비 **~50% 속도 향상** (v0.1.0+)
+| Setup | Avg latency | Cost/query |
+|-------|-------------|------------|
+| GPT-5.2 + Claude Sonnet (API, parallel) | ~18s | $0.03–0.08 |
+| GPT-5.2 + Claude OAuth (parallel) | ~35s | ~$0.01 |
+| GPT-5.2 + GPT-5.2 (same vendor) | ~15s | $0.02–0.05 |
+
+Parallel A+B execution gives **~50% speedup** vs sequential (v0.1.0+).
 
 ---
 
 ## Why Cross-Vendor?
 
-GPT와 Claude는 다른 회사가, 다른 데이터로, 다른 방법으로 훈련했습니다. 같은 질문에 다른 관점을 가질 가능성이 높습니다. 이것이 amp의 핵심 — 교차 벤더 합성.
+GPT and Claude were trained by different companies, on different data, with different
+alignment approaches. They genuinely disagree more often than two instances of the same model.
+That's the core insight behind amp — **cross-vendor synthesis produces better answers than
+single-vendor, even with self-debate prompting**.
 
-같은 벤더 (GPT+GPT)도 동작하지만, amp는 자동으로 페르소나를 극단적으로 다르게 설정해 다양성을 확보합니다.
+Same-vendor pairs (GPT+GPT) also work — amp automatically pushes their personas to
+opposite extremes to maximize diversity.
 
 ---
 
 ## Contributing
 
 ```bash
-git clone https://github.com/amp-reasoning/amp
-cd amp
+git clone https://github.com/dragon1086/amp-assistant
+cd amp-assistant
 pip install -e ".[dev]"
-pytest
+pytest tests/ -q
 ```
+
+PRs welcome. Please open an issue first for larger changes.
 
 ---
 
