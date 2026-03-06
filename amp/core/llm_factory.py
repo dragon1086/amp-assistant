@@ -21,9 +21,9 @@ Supported providers:
   Gemini:    gemini-2.5-pro (최상위), gemini-2.5-flash (빠름)
              thinking_budget: int 토큰 수 (0=비활성)
   DeepSeek:  deepseek-chat (V3.2 non-thinking), deepseek-reasoner (V3.2 thinking/R1)
-  ZhiPu GLM: glm-z1 (최신 reasoning), glm-4-plus, glm-4
-  xAI:       grok-3 (최신), grok-3-mini
-  Mistral:   mistral-large-2, pixtral-large, ministral-8b
+  ZhiPu GLM: glm-5 (744B MoE, 2026.02 최신), glm-4.6 (355B/32B active), glm-4-plus
+  xAI:       grok-4-0709 (최신, 256k), grok-4-fast-reasoning (2M ctx), grok-3, grok-3-mini
+  Mistral:   mistral-large-3 (41B active/675B MoE, 최신), mistral-large-2, ministral-8b
 
 모델 자동탐지: list_available_models(provider) 함수 사용
 """
@@ -79,9 +79,9 @@ def call_llm(
     elif provider in ("zhipu", "glm"):
         return _call_zhipu(prompt, system, model or "glm-4-plus", temperature=temperature, **kwargs)
     elif provider in ("xai", "grok"):
-        return _call_xai(prompt, system, model or "grok-3", temperature=temperature, **kwargs)
+        return _call_xai(prompt, system, model or "grok-4-0709", temperature=temperature, **kwargs)
     elif provider == "mistral":
-        return _call_mistral(prompt, system, model or "mistral-large-2", temperature=temperature, **kwargs)
+        return _call_mistral(prompt, system, model or "mistral-large-3", temperature=temperature, **kwargs)
     elif provider == "local":
         return _call_ollama(prompt, system, model, temperature=temperature)
     else:
@@ -247,24 +247,32 @@ def list_available_models(provider: str = "openai", api_key: str | None = None) 
 
     elif provider in ("zhipu", "glm"):
         return [
-            "glm-z1",
-            "glm-4-plus",
-            "glm-4",
-            "glm-4v",
+            "glm-5",      # 최신: 744B 파라미터 MoE (2026.02)
+            "glm-4.6",    # 355B total / 32B active, Claude Sonnet 4 수준 코딩
+            "glm-4-plus", # 안정 버전
+            "glm-4",      # 기본 모델
+            "glm-4v",     # vision 모델
         ]
 
     elif provider in ("xai", "grok"):
         return [
-            "grok-3",
-            "grok-3-mini",
+            "grok-4-0709",            # Grok 4 (최신, 256k context)
+            "grok-4-fast-reasoning",  # 빠른 Grok 4 with reasoning (2M context)
+            "grok-4-fast-non-reasoning",  # 빠른 Grok 4 without reasoning (2M context)
+            "grok-code-fast-1",       # 코드 특화 + reasoning
+            "grok-3",                 # 이전 세대
+            "grok-3-mini",            # 경량
         ]
 
     elif provider == "mistral":
         return [
-            "mistral-large-2",
-            "pixtral-large",
-            "ministral-8b",
-            "codestral-2501",
+            "mistral-large-3",    # 최신: 41B active/675B total MoE, Apache 2.0
+            "mistral-large-2",    # 이전 세대 flagship
+            "pixtral-large",      # vision 지원
+            "ministral-14b",      # 새 경량 (Mistral 3 시리즈)
+            "ministral-8b",       # 경량 고속
+            "ministral-3b",       # 초경량
+            "codestral-2501",     # 코드 특화
         ]
 
     return []
@@ -551,8 +559,9 @@ def _call_zhipu(
     SDK: pip install zhipuai
 
     Models (2026-03 기준):
-      glm-z1       — 최신 reasoning 모델 (추론 특화)
-      glm-4-plus   — 최신 일반 채팅 모델
+      glm-5        — 최신 MoE (744B 파라미터, 2026.02 출시)
+      glm-4.6      — 355B total / 32B active, 코딩 Claude Sonnet 4 수준
+      glm-4-plus   — 안정 버전 일반 채팅
       glm-4        — 기본 모델
       glm-4v       — vision 모델
     """
@@ -597,8 +606,12 @@ def _call_xai(
     Endpoint: https://api.x.ai/v1
 
     Models (2026-03 기준):
-      grok-3       — 최신 최상위 모델
-      grok-3-mini  — 경량 빠른 모델
+      grok-4-0709            — Grok 4 (최신, 256k context, $3/$15 per M)
+      grok-4-fast-reasoning  — Grok 4 빠른 버전 + reasoning (2M context, $0.20/$0.50)
+      grok-4-fast-non-reasoning  — Grok 4 빠른 버전 non-reasoning (2M context)
+      grok-code-fast-1       — 코드 특화 + reasoning
+      grok-3                 — 이전 세대 (131k context)
+      grok-3-mini            — 경량 + reasoning
     """
     import openai
 
@@ -639,10 +652,13 @@ def _call_mistral(
     Endpoint: https://api.mistral.ai/v1
 
     Models (2026-03 기준):
-      mistral-large-2    — 최상위 모델 (128K context)
-      pixtral-large      — vision 지원
-      ministral-8b       — 경량 고속 모델
-      codestral-2501     — 코드 특화
+      mistral-large-3  — 최신: 41B active / 675B total MoE, Apache 2.0 오픈소스 (2026)
+      mistral-large-2  — 이전 세대 128K context
+      pixtral-large    — vision 지원
+      ministral-14b    — Mistral 3 시리즈 경량 (2026)
+      ministral-8b     — 경량 고속
+      ministral-3b     — 초경량
+      codestral-2501   — 코드 특화
     """
     import openai
 
