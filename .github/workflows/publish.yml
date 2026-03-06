@@ -43,9 +43,6 @@ jobs:
   publish:
     needs: build
     runs-on: ubuntu-latest
-    environment:
-      name: pypi
-      url: https://pypi.org/project/amp-reasoning/
     permissions:
       id-token: write  # Trusted Publishing (토큰 없이도 가능!)
     steps:
