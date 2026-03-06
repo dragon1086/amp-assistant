@@ -645,6 +645,91 @@ def cli(ctx, query, mode, config_path):
 
 
 @click.command()
+@click.option("--provider", "-p",
+              type=click.Choice(["openai", "anthropic", "both"]),
+              default="both",
+              help="로그인할 provider (기본: both)")
+def login(provider):
+    """OAuth 로그인 — API 키 없이 무료로 amp 사용.
+
+    \b
+    $ amp login                    # OpenAI + Anthropic 둘 다
+    $ amp login --provider openai  # GPT만 (Codex CLI OAuth)
+    $ amp login --provider anthropic  # Claude만 (claude login)
+
+    \b
+    조건:
+      OpenAI   — ChatGPT Plus/Pro 구독 필요
+      Anthropic — Claude Max/Pro 구독 필요
+    """
+    import shutil
+
+    def _do_openai():
+        codex_bin = shutil.which("codex")
+        if not codex_bin:
+            console.print("[red]❌ Codex CLI 미설치[/red]")
+            console.print("   [cyan]npm install -g @openai/codex[/cyan]")
+            return False
+        console.print("\n[bold]OpenAI OAuth 로그인[/bold]")
+        console.print("[dim]ChatGPT Plus/Pro 구독이 있으면 API 비용 없이 GPT-5.x 사용 가능[/dim]\n")
+        console.print("브라우저 또는 디바이스 코드로 로그인합니다...")
+        import subprocess as _sp
+        result = _sp.run([codex_bin, "login", "--device-auth"], text=True)
+        if result.returncode == 0:
+            console.print("[green]✅ OpenAI OAuth 로그인 완료! (~/.codex/auth.json 저장됨)[/green]")
+            return True
+        else:
+            console.print("[yellow]⚠️  OpenAI OAuth 실패. API 키를 대신 사용하세요.[/yellow]")
+            return False
+
+    def _do_anthropic():
+        claude_bin = shutil.which("claude") or os.path.expanduser("~/.local/bin/claude")
+        if not os.path.exists(claude_bin):
+            console.print("[red]❌ Claude CLI 미설치[/red]")
+            console.print("   [cyan]npm install -g @anthropic-ai/claude-code[/cyan]")
+            return False
+        console.print("\n[bold]Anthropic OAuth 로그인[/bold]")
+        console.print("[dim]Claude Max/Pro 구독이 있으면 API 비용 없이 Claude 사용 가능[/dim]\n")
+        import subprocess as _sp
+        result = _sp.run([claude_bin, "login"], text=True)
+        if result.returncode == 0:
+            console.print("[green]✅ Anthropic OAuth 로그인 완료! (~/.claude/oauth-token 저장됨)[/green]")
+            return True
+        else:
+            console.print("[yellow]⚠️  Anthropic OAuth 실패. API 키를 대신 사용하세요.[/yellow]")
+            return False
+
+    console.print(Panel(
+        "[bold cyan]🔐 amp login[/bold cyan]\n"
+        "[dim]API 키 없이 OAuth로 무료 사용 (구독 필요)[/dim]",
+        border_style="cyan", expand=False,
+    ))
+
+    ok_openai = ok_anthropic = False
+    if provider in ("openai", "both"):
+        ok_openai = _do_openai()
+    if provider in ("anthropic", "both"):
+        ok_anthropic = _do_anthropic()
+
+    # config 업데이트
+    if ok_openai or ok_anthropic:
+        config = load_config()
+        if ok_openai:
+            config.setdefault("agents", {}).setdefault("agent_a", {}).update({
+                "provider": "openai_oauth", "model": "gpt-5.4"
+            })
+        if ok_anthropic:
+            config.setdefault("agents", {}).setdefault("agent_b", {}).update({
+                "provider": "anthropic_oauth", "model": "claude-sonnet-4-6"
+            })
+        save_config(config)
+        console.print(f"\n[green]✅ config 업데이트 완료[/green]")
+
+    console.print("\n[bold]사용:[/bold]")
+    console.print('  [cyan]amp "비트코인 지금 사야 할까?"[/cyan]')
+
+
+@click.command()
 @click.option("--non-interactive", is_flag=True, help="자동 설정 (API 키 자동 탐지)")
 def init(non_interactive):
     """amp 초기 설정 — API 키 자동 탐지 + config 생성.
@@ -703,12 +788,36 @@ def init(non_interactive):
         else:
             console.print(f"[green]✅ Anthropic API 키 감지됨[/green]")
 
+    # 최신 모델 자동탐지
+    if not non_interactive:
+        console.print("\n[bold]🔍 사용 가능한 최신 모델 탐지 중...[/bold]")
+        try:
+            from amp.core.llm_factory import list_available_models, recommend_model
+            openai_models = list_available_models("openai")
+            recommended_gpt = recommend_model("openai")
+            console.print(f"  GPT 최신: [cyan]{recommended_gpt}[/cyan]  (전체 {len(openai_models)}개)")
+        except Exception:
+            recommended_gpt = "gpt-5.4"
+
+        agent_a_model = Prompt.ask(
+            f"  Agent A 모델 (OpenAI)",
+            default=recommended_gpt, console=console
+        ).strip() or recommended_gpt
+    else:
+        agent_a_model = "gpt-5.4"
+
     # config 저장
+    # OAuth 토큰 있으면 oauth 모드 자동 선택
+    from amp.core.llm_factory import _load_codex_token
+    has_codex_oauth = bool(_load_codex_token()) and not openai_key
+    has_claude_oauth = os.path.exists(os.path.expanduser("~/.claude/oauth-token")) and not anthropic_key
+
     config.setdefault("agents", {}).setdefault("agent_a", {}).update({
-        "provider": "openai", "model": "gpt-5.2"
+        "provider": "openai_oauth" if has_codex_oauth else "openai",
+        "model": agent_a_model,
     })
     config.setdefault("agents", {}).setdefault("agent_b", {}).update({
-        "provider": "anthropic" if anthropic_key else "anthropic_oauth",
+        "provider": "anthropic" if anthropic_key else ("anthropic_oauth" if has_claude_oauth else "anthropic_oauth"),
         "model": "claude-sonnet-4-6",
     })
     config.setdefault("amp", {}).update({"parallel": True, "timeout": 90})
@@ -788,6 +897,7 @@ def quick(query: str, config_path: str | None):
 
 cli.add_command(setup)
 cli.add_command(init)
+cli.add_command(login)
 cli.add_command(quick)
 cli.add_command(serve)
 cli.add_command(main, name="ask")
