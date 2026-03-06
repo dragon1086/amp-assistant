@@ -47,7 +47,7 @@ Question ──┬──► Agent A  [isolated]  ──► analysis A
 
 ### Problem 2 — Same-vendor models aren't truly independent
 
-GPT-4 + GPT-4 with different prompts will produce high lexical overlap. The training data, RLHF alignment, and prior distribution are shared — diversity is mostly surface-level.
+GPT-5 + GPT-5 with different prompts will produce high lexical overlap. The training data, RLHF alignment, and prior distribution are shared — diversity is mostly surface-level.
 
 **amp's solution — same-vendor divergence engine:** amp automatically detects whether both agents use the same vendor. If they do, it assigns extreme domain-specific opposing personas and different temperatures:
 

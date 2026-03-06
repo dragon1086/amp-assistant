@@ -641,6 +641,10 @@ def setup():
 def cli(ctx, query, mode, config_path):
     """amp — local personal assistant with emergent 2-agent collaboration."""
     if ctx.invoked_subcommand is None:
+        # QUERY가 서브커맨드 이름이면 해당 커맨드로 라우팅 (Click positional arg 충돌 방지)
+        if query and query in ctx.command.commands:
+            ctx.invoke(ctx.command.commands[query])
+            return
         ctx.invoke(main, query=query, mode=mode, config_path=config_path)
 
 
@@ -895,6 +899,38 @@ def quick(query: str, config_path: str | None):
     asyncio.run(_run())
 
 
+@click.command()
+@click.option("--delete", "-d", default=None, metavar="NAME", help="동적 도메인 삭제")
+def domains(delete):
+    """동적 도메인 레지스트리 조회/관리. 쿼리가 쌓이면서 자동으로 성장."""
+    from amp.core.domain_registry import DomainRegistry
+    registry = DomainRegistry()
+
+    if delete:
+        import sqlite3
+        with sqlite3.connect(registry.db_path) as conn:
+            conn.execute("DELETE FROM domains WHERE name = ?", (delete,))
+            conn.commit()
+        click.echo(f"🗑️  도메인 삭제: {delete}")
+        return
+
+    all_domains = registry.list_all()
+    if not all_domains:
+        click.echo("📭 아직 동적 도메인이 없습니다. amp로 질문해보세요!")
+        click.echo("   키워드 매칭 미스 시 새 도메인이 자동 창작됩니다.")
+        return
+
+    click.echo(f"🧠 동적 도메인 레지스트리 ({len(all_domains)}개 학습됨)\n")
+    for d in all_domains:
+        name = d["name"]
+        usage = d["usage_count"]
+        kws = ", ".join(d["keywords"][:4]) if d["keywords"] else "—"
+        click.echo(f"  [{name}]")
+        click.echo(f"    키워드: {kws}")
+        click.echo(f"    사용횟수: {usage}")
+        click.echo()
+
+
 cli.add_command(setup)
 cli.add_command(init)
 cli.add_command(login)
@@ -902,6 +938,7 @@ cli.add_command(quick)
 cli.add_command(serve)
 cli.add_command(main, name="ask")
 cli.add_command(plugin)
+cli.add_command(domains)
 
 
 if __name__ == "__main__":
