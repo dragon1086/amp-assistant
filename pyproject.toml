@@ -41,12 +41,25 @@ server = [
 telegram = [
     "python-telegram-bot>=21.0",
 ]
+# pip install "amp-reasoning[gemini]" — Google Gemini 지원
+# GEMINI_API_KEY 또는 GOOGLE_API_KEY 필요 (Google AI Studio 무료 티어 있음)
+gemini = [
+    "google-genai>=1.0.0",   # 새 통합 SDK (deprecated google-generativeai 대체)
+]
+# pip install "amp-reasoning[zhipu]" — ZhiPu GLM 지원 (중국 AI)
+# ZHIPUAI_API_KEY 필요 (https://open.bigmodel.cn)
+zhipu = [
+    "zhipuai>=2.1.0",
+]
+# DeepSeek, xAI Grok, Mistral — openai SDK(기본 포함)로 OpenAI-호환 사용
+# 별도 설치 불필요: DEEPSEEK_API_KEY / XAI_API_KEY / MISTRAL_API_KEY만 설정
 # pip install "amp-reasoning[all]" — 전부
 all = [
     "fastapi>=0.110.0",
     "uvicorn>=0.27.0",
     "python-telegram-bot>=21.0",
-    "google-generativeai>=0.8.0",
+    "google-genai>=1.0.0",
+    "zhipuai>=2.1.0",
 ]
 dev = [
     "pytest>=8.0",
