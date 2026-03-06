@@ -104,6 +104,65 @@ al debate de 4 rondas para forzar perspectivas más diversas.
 
 ---
 
+## Benchmark
+
+Evaluación A/B ciega: amp ON vs GPT-5.2 solo. Gemini como juez (etiquetas de modelo aleatorizadas). N=30 preguntas, 7 dominios.
+
+| Dominio | amp gana | Solo gana | Tasa de éxito amp |
+|---------|:--------:|:---------:|:-----------------:|
+| Asignación de recursos | 4 | 1 | **80%** |
+| Estrategia | 4 | 2 | **67%** |
+| Emoción | 3 | 2 | 60% |
+| Carrera | 0 | 3 | 0% |
+| Relaciones | 1 | 4 | 20% |
+| Ética | 1 | 4 | 20% |
+| **Total (N=30)** | **13** | **17** | **43%** |
+
+**Interpretación honesta:** amp no es universalmente mejor. Supera significativamente en problemas complejos con múltiples perspectivas válidas (estrategia, asignación de recursos). Para consejos factuales, un solo modelo experto suele ser suficiente.
+
+---
+
+## Arte Previo y Diferenciación
+
+| Proyecto | Origen | Propósito | pip | Memoria KG | CSER | Aislamiento | MCP |
+|---------|--------|-----------|:---:|:---:|:---:|:---:|:---:|
+| **amp** | OSS | Asesoría de decisiones | ✅ | ✅ | ✅ | ✅ | ✅ |
+| llm_multiagent_debate | ICML 2024 | Precisión Math/MMLU | ❌ | ❌ | ❌ | ❌ | ❌ |
+| DebateLLM | InstaDeep 2024 | Q&A médico | ❌ | ❌ | ❌ | ❌ | ❌ |
+| AutoGen | Microsoft | Automatización de tareas | ✅ | ❌ | ❌ | ❌ | ❌ |
+| CrewAI | Comercial | Flujos empresariales | ✅ | ❌ | ❌ | ❌ | ❌ |
+
+**Diferencia clave:** Los papers académicos MAD buscan mejorar precisión en benchmarks cerrados. amp está diseñado para calidad de razonamiento en decisiones abiertas sin respuesta única correcta.
+
+---
+
+## Arquitectura Interna
+
+Detalles técnicos: [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md)
+
+### Grafo de Conocimiento
+
+```
+Almacenamiento : SQLite (~/.amp/kg.db) — un archivo, sin servidor
+Embeddings     : OpenAI text-embedding-3-small (1536 dim)
+Búsqueda       : similitud coseno numpy — O(n), hasta ~100K nodos
+```
+
+### Algoritmo CSER
+
+```python
+cser = (len(unique_a) + len(unique_b)) / len(total_ideas)
+# unique_a = ideas que solo presentó A
+# unique_b = ideas que solo presentó B
+# CSER ≥ 0.30 → síntesis continúa | CSER < 0.30 → escala a 4 rondas
+```
+
+### Registro de Dominios Dinámico
+
+Para consultas fuera de los 9 dominios estáticos (carrera, inversión, etc.), el LLM crea automáticamente un nuevo dominio y lo guarda en SQLite. Usa `amp domains` para ver todos los dominios aprendidos.
+
+---
+
 ## Configuración
 
 ```bash
