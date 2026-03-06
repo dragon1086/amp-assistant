@@ -10,7 +10,7 @@
 [![License: MIT](https://img.shields.io/badge/license-MIT-green?style=flat-square)](LICENSE)
 [![CI](https://img.shields.io/github/actions/workflow/status/dragon1086/amp-assistant/test.yml?style=flat-square&label=CI)](https://github.com/dragon1086/amp-assistant/actions)
 
-**[Why amp?](#why-amp-not-just-two-api-calls)** · **[Install](#install)** · **[How it works](#how-it-works)** · **[Benchmark](#benchmark)** · **[Prior Art](#prior-art--differentiation)** · **[Internals](#internals)** · **[Config](#configuration)**
+**[Why amp?](#why-amp-not-just-two-api-calls)** · **[Install](#install)** · **[How it works](#how-it-works)** · **[Benchmark](#benchmark)** · **[Prior Art](#prior-art--differentiation)** · **[Internals](#internals)** · **[Integrations](#integrations)** · **[Config](#configuration)**
 
 <br/>
 
@@ -370,6 +370,96 @@ amp:
 | `local` | ⚡⚡ | Free | Ollama running |
 
 > **Highest CSER in practice:** `openai` × `anthropic` — trained by different organizations on different corpora with different alignment methods. Structural divergence, not prompted divergence.
+
+---
+
+## Integrations
+
+amp ships with multiple surfaces so you can drop it into whatever workflow you already use.
+
+### Telegram Bot
+
+Full Telegram interface — send questions, switch modes, manage plugins, generate images.
+
+```bash
+amp bot          # start the bot (requires TELEGRAM_BOT_TOKEN)
+```
+
+| Command | Description |
+|---------|-------------|
+| `<message>` | Analyze with amp (current mode) |
+| `/mode auto\|solo\|pipeline\|emergent` | Switch reasoning mode |
+| `/model` | Show / set models per-user |
+| `/imagine <prompt>` | Generate an image (image_gen plugin) |
+| `/plugins` | List all plugins + status |
+| `/plugin enable\|disable <name>` | Toggle a plugin |
+| `/stats` | KG node count + session stats |
+| `/clear` | Clear conversation history |
+| 📷 Photo | Image analysis via image_vision plugin |
+
+Config:
+```yaml
+# ~/.amp/config.yaml
+telegram:
+  bot_token: YOUR_BOT_TOKEN
+```
+
+---
+
+### Plugin System
+
+amp's built-in plugins extend functionality without touching core reasoning logic.
+
+| Plugin | What it does | Default |
+|--------|-------------|:-------:|
+| `image_vision` | Analyze photos with GPT-4o Vision | ✅ on |
+| `image_gen` | Generate images (`/imagine`) via Gemini / DALL-E | ✅ on |
+| `claude_executor` | Run Claude Code locally, return results to Telegram | ❌ off |
+| `mcp_bridge` | Let amp agents call external MCP servers as tools | ❌ off |
+
+```bash
+amp plugins          # list all plugins
+amp plugin enable claude_executor
+amp plugin disable image_gen
+```
+
+**External plugins** — drop a `SKILL.md` + optional `plugin.py` into `~/.amp/plugins/`:
+
+```
+~/.amp/plugins/
+└── my_skill/
+    ├── SKILL.md      # name, description, enabled_by_default
+    └── plugin.py     # optional: BasePlugin subclass
+```
+
+SKILL.md-only plugins inject their content as a system prompt into amp agents. Compatible with OpenClaw AgentSkills format.
+
+---
+
+### MCP Bridge (amp as client)
+
+amp agents can call **external MCP servers** as tools during reasoning — giving them real-time access to filesystems, GitHub, Brave Search, and more.
+
+```yaml
+# ~/.amp/config.yaml
+mcp:
+  servers:
+    - name: filesystem
+      url: http://localhost:3001
+      enabled: true
+    - name: brave-search
+      url: http://localhost:3002
+      enabled: true
+    - name: github
+      url: http://localhost:3003
+      enabled: false
+```
+
+```
+/mcp               — list registered servers + connection status
+/mcp tools         — list all available tools
+/mcp call <server> <tool> <args_json>  — call a tool directly
+```
 
 ---
 

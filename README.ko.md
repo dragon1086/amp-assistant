@@ -8,7 +8,7 @@
 [![Python 3.11+](https://img.shields.io/badge/python-3.11%2B-blue?style=flat-square)](https://python.org)
 [![License: MIT](https://img.shields.io/badge/license-MIT-green?style=flat-square)](LICENSE)
 
-**[왜 amp인가](#왜-amp인가--그냥-api-두-번-호출이-아닌-이유)** · **[설치](#설치)** · **[작동 원리](#작동-원리)** · **[벤치마크](#벤치마크)** · **[선행 연구](#선행-연구-및-차별점)** · **[내부 구조](#내부-구조)** · **[설정](#설정)**
+**[왜 amp인가](#왜-amp인가--그냥-api-두-번-호출이-아닌-이유)** · **[설치](#설치)** · **[작동 원리](#작동-원리)** · **[벤치마크](#벤치마크)** · **[선행 연구](#선행-연구-및-차별점)** · **[내부 구조](#내부-구조)** · **[연동](#연동-integrations)** · **[설정](#설정)**
 
 <br/>
 
@@ -285,6 +285,89 @@ amp:
 ```
 
 > **실제로 가장 높은 CSER:** `openai` × `anthropic` — 서로 다른 조직, 다른 코퍼스, 다른 정렬 방법으로 훈련. 프롬프트 다양성이 아닌 구조적 다양성.
+
+---
+
+## 연동 (Integrations)
+
+amp는 다양한 인터페이스를 기본 제공합니다 — 이미 쓰는 환경에 바로 연결하세요.
+
+### 텔레그램 봇
+
+질문 전송, 모드 전환, 플러그인 관리, 이미지 생성까지 — 텔레그램으로 전부 가능합니다.
+
+```bash
+amp bot   # 봇 시작 (TELEGRAM_BOT_TOKEN 필요)
+```
+
+| 명령 | 설명 |
+|------|------|
+| `<메시지>` | amp로 분석 (현재 모드) |
+| `/mode auto\|solo\|pipeline\|emergent` | 추론 모드 전환 |
+| `/model` | 모델 확인/변경 |
+| `/imagine <프롬프트>` | 이미지 생성 |
+| `/plugins` | 플러그인 목록 + 상태 |
+| `/stats` | KG 노드 수 + 세션 통계 |
+| `/clear` | 대화 기록 초기화 |
+| 📷 사진 전송 | 이미지 분석 (image_vision 플러그인) |
+
+---
+
+### 플러그인 시스템
+
+| 플러그인 | 기능 | 기본 |
+|---------|------|:----:|
+| `image_vision` | 사진 분석 (GPT-4o Vision) | ✅ |
+| `image_gen` | 이미지 생성 (`/imagine`, Gemini/DALL-E) | ✅ |
+| `claude_executor` | Claude Code 로컬 실행 후 결과 반환 | ❌ |
+| `mcp_bridge` | 외부 MCP 서버를 amp 에이전트 도구로 연결 | ❌ |
+
+```bash
+amp plugins                        # 전체 목록
+amp plugin enable claude_executor  # 활성화
+```
+
+**외부 플러그인** — `~/.amp/plugins/`에 `SKILL.md` + 선택적 `plugin.py` 추가:
+```
+~/.amp/plugins/my_skill/
+├── SKILL.md    # name, description, enabled_by_default
+└── plugin.py   # 선택사항 (BasePlugin 서브클래스)
+```
+OpenClaw AgentSkills 포맷과 호환됩니다.
+
+---
+
+### MCP 브릿지 (amp → 외부 MCP 서버)
+
+amp 에이전트가 추론 중 **외부 MCP 서버**를 도구로 호출할 수 있습니다 — 파일시스템, GitHub, 웹 검색 등 실시간 접근 가능.
+
+```yaml
+# ~/.amp/config.yaml
+mcp:
+  servers:
+    - name: filesystem
+      url: http://localhost:3001
+      enabled: true
+    - name: brave-search
+      url: http://localhost:3002
+      enabled: true
+```
+
+---
+
+### MCP 서버 (amp를 클라이언트에 연결)
+
+```bash
+amp serve   # http://127.0.0.1:3010
+```
+
+**Claude Desktop**, **Cursor**, **Windsurf**, **OpenClaw** 등 MCP 호환 클라이언트에서 바로 사용 가능.
+
+| 도구 | 설명 | 지연 |
+|------|------|:----:|
+| `analyze` | 2-에이전트 병렬 + CSER 게이트 | 15–30s |
+| `debate` | 4-라운드 구조적 토론 | 30–60s |
+| `quick_answer` | 단일 모델 빠른 답변 | ~3s |
 
 ---
 
