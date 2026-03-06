@@ -33,6 +33,8 @@ Agent A (GPT-5.2) ──────────────── Agent B (Clau
 ```bash
 pip install amp-reasoning
 amp init   # API 키 설정 (1분)
+# 또는: API 키 없이 OAuth 무료 사용
+amp login  # ChatGPT Plus + Claude Max 구독자 → 비용 0원
 ```
 
 **원클릭 설치:**
@@ -92,7 +94,7 @@ amp init  # 대화형 설정
 agents:
   agent_a:
     provider: openai
-    model: gpt-5.2          # 최신 GPT-5 계열
+    model: gpt-5.4          # 최신 GPT-5 계열
     reasoning_effort: medium # none | low | medium | high | xhigh
 
   agent_b:
@@ -111,9 +113,16 @@ amp:
 | provider | 속도 | 비용 | 조건 |
 |----------|------|------|------|
 | `openai` | ⚡⚡⚡ | 유료 | OPENAI_API_KEY |
+| `openai_oauth` | ⚡⚡⚡ | **무료** | ChatGPT Plus/Pro + `amp login` |
 | `anthropic` | ⚡⚡⚡ | 유료 | ANTHROPIC_API_KEY |
-| `anthropic_oauth` | ⚡ | 무료 | Claude CLI 설치 |
+| `anthropic_oauth` | ⚡⚡ | **무료** | Claude Max/Pro + `amp login` |
 | `local` | ⚡⚡ | 무료 | Ollama 실행 중 |
+
+**💡 완전 무료 조합:**
+```bash
+amp login  # ChatGPT Plus + Claude Max 구독 있으면 API 비용 0원
+# → openai_oauth (GPT-5.4) × anthropic_oauth (Claude Sonnet) 자동 설정
+```
 
 ---
 
