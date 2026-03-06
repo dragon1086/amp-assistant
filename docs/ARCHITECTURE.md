@@ -27,7 +27,7 @@ User query
 ┌───────────────────────────────────────────────────────┐
 │  Auto-Persona Engine                                  │
 │  ┌────────────────────────────────────────────────┐  │
-│  │ 1. Static keyword match (9 preset domains)     │  │
+│  │ 1. Static keyword match (9 built-in presets)   │  │
 │  │ 2. DomainRegistry.find()  (embedding cache)    │  │
 │  │ 3. DomainRegistry.create() (LLM + persist)     │  │
 │  └────────────────────────────────────────────────┘  │
@@ -197,7 +197,7 @@ Contrasting personas are the primary mechanism for inducing cognitive diversity 
 
 ```
 Stage 1: Static keyword matching (O(1))
-  ─ 9 preset domains: career, relationship, business, investment,
+  ─ 9 built-in preset domains: career, relationship, business, investment,
     legal_contract, health, ethics, creative, parenting
   ─ Keyword lists in DOMAIN_KEYWORDS dict
   ─ ~70% of real-world queries resolved here
@@ -240,7 +240,7 @@ Cross-vendor pairs (GPT × Claude) skip this — their structural divergence (di
 
 ### Motivation
 
-The 9 static preset domains cover ~70% of real queries. Queries outside this set previously fell back to a generic "default" persona pair — losing all domain-specificity.
+The 9 built-in preset domains cover ~70% of real queries. The remaining 30% now go through the dynamic registry — meaning the total domain pool is **unbounded** and grows with every novel query type.
 
 ### Architecture
 

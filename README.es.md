@@ -159,7 +159,7 @@ cser = (len(unique_a) + len(unique_b)) / len(total_ideas)
 
 ### Registro de Dominios Dinámico
 
-Para consultas fuera de los 9 dominios estáticos (carrera, inversión, etc.), el LLM crea automáticamente un nuevo dominio y lo guarda en SQLite. Usa `amp domains` para ver todos los dominios aprendidos.
+Para consultas fuera de los 9 dominios integrados, el LLM crea automáticamente un nuevo dominio y lo guarda en SQLite (pool ilimitado). Usa `amp domains` para ver todos los dominios aprendidos.
 
 ---
 

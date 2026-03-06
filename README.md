@@ -58,7 +58,7 @@ GPT-5 + GPT-5 with different prompts will produce high lexical overlap. The trai
 | `career` | Career optimization strategist — data-driven, risk-min | Disruptive coach — nonlinear leaps, reject comfort | 0.3 / 1.1 |
 | `ethics` | Deontological ethicist — principle-based, absolute | Utilitarian pragmatist — outcome-driven, contextual | 0.3 / 1.1 |
 
-9 domains in total. Cross-vendor pairs (GPT × Claude) skip this — their divergence is structural.
+9 built-in preset domains (+ unlimited dynamic domains auto-created on demand). Cross-vendor pairs (GPT × Claude) skip this — their divergence is structural.
 
 ### Problem 3 — "Better answer" is unverifiable without measurement
 
@@ -95,7 +95,7 @@ This isn't an incidental feature. It's why amp has to exist as open source.
 
 ### 2-round — parallel independent analysis (default)
 
-1. **Auto-persona:** amp detects the query domain (9 categories, LLM fallback) and assigns contrasting expert personas to each agent.
+1. **Auto-persona:** amp detects the query domain — 9 built-in presets + unlimited dynamic domains (auto-created via LLM and cached) — and assigns contrasting expert personas to each agent.
 2. **Parallel execution:** Agent A and B run simultaneously with no cross-visibility.
 3. **CSER measurement:** unique and shared insights are computed via Jaccard similarity on extracted idea units.
 4. **Gate:** if CSER < θ, auto-escalate to 4-round.
@@ -245,7 +245,7 @@ CSER = 0.0 → both agents produced identical insights (echo chamber).
 ```
 Query
   │
-  ├─ 1. Static keyword match (O(1), 9 preset domains)  ──────► preset personas
+  ├─ 1. Static keyword match (O(1), 9 built-in presets)  ──────► preset personas
   │
   ├─ 2. DomainRegistry.find()  — cosine similarity ≥ 0.78   ──► cached personas
   │        (SQLite + text-embedding-3-small)
@@ -255,7 +255,7 @@ Query
              + dedup merge check (≥ 0.75)
 ```
 
-The registry grows with every unknown query. `amp domains` lists all learned domains.
+**Domain pool is unbounded.** The registry grows automatically with every unknown query. `amp domains` lists all learned domains.
 
 ### Academic Foundations
 

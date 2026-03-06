@@ -159,7 +159,7 @@ cser = (len(unique_a) + len(unique_b)) / len(total_ideas)
 
 ### 动态领域注册表
 
-针对 9 个静态领域（职业、投资等）无法覆盖的查询，LLM 会自动创建新领域并保存到 SQLite。使用 `amp domains` 查看已学习的领域列表。
+针对 9 个内置预设以外的查询，LLM 会自动创建新领域并保存到 SQLite（领域数量无限制）。使用 `amp domains` 查看已学习的领域列表。
 
 ---
 
