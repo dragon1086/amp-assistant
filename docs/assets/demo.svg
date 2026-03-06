@@ -1,0 +1,116 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="800" height="520" viewBox="0 0 800 520">
+  <defs>
+    <linearGradient id="bg" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" style="stop-color:#0d1117"/>
+      <stop offset="100%" style="stop-color:#161b22"/>
+    </linearGradient>
+    <filter id="shadow">
+      <feDropShadow dx="0" dy="4" stdDeviation="8" flood-color="#000" flood-opacity="0.5"/>
+    </filter>
+  </defs>
+
+  <!-- Window -->
+  <rect width="800" height="520" rx="12" fill="url(#bg)" filter="url(#shadow)"/>
+
+  <!-- Title bar -->
+  <rect width="800" height="38" rx="12" fill="#21262d"/>
+  <rect y="26" width="800" height="12" fill="#21262d"/>
+
+  <!-- Traffic lights -->
+  <circle cx="20" cy="19" r="6" fill="#ff5f57"/>
+  <circle cx="40" cy="19" r="6" fill="#febc2e"/>
+  <circle cx="60" cy="19" r="6" fill="#28c840"/>
+
+  <!-- Window title -->
+  <text x="400" y="24" font-family="SF Pro, -apple-system, sans-serif" font-size="13" fill="#8b949e" text-anchor="middle">zsh — amp</text>
+
+  <!-- Terminal content -->
+  <g font-family="'SF Mono', 'Fira Code', 'Consolas', monospace" font-size="13">
+
+    <!-- Prompt + command -->
+    <text x="20" y="68">
+      <tspan fill="#58a6ff">❯</tspan>
+      <tspan fill="#e6edf3" dx="6">amp </tspan>
+      <tspan fill="#a5d6ff">"Should I use Rust or Go for my backend in 2026?"</tspan>
+    </text>
+
+    <!-- Blank line -->
+
+    <!-- Header panel -->
+    <text x="20" y="96" fill="#8b949e">━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━</text>
+    <text x="20" y="116" fill="#f0f6fc" font-weight="bold">  🤖 amp  —  emergent analysis</text>
+    <text x="20" y="132" fill="#8b949e">━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━</text>
+
+    <!-- Agent A status -->
+    <text x="20" y="156">
+      <tspan fill="#7c3aed">●</tspan>
+      <tspan fill="#8b949e" dx="6">Agent A (GPT-5.2)    </tspan>
+      <tspan fill="#28a745">■■■■■■■■■■</tspan>
+      <tspan fill="#3fb950" dx="6">done  8.3s</tspan>
+    </text>
+
+    <!-- Agent B status -->
+    <text x="20" y="176">
+      <tspan fill="#0891b2">●</tspan>
+      <tspan fill="#8b949e" dx="6">Agent B (Claude 4.6) </tspan>
+      <tspan fill="#28a745">■■■■■■■■■■</tspan>
+      <tspan fill="#3fb950" dx="6">done  9.1s</tspan>
+    </text>
+
+    <!-- CSER score -->
+    <text x="20" y="196">
+      <tspan fill="#f0f6fc">  CSER  </tspan>
+      <tspan fill="#f59e0b">0.74</tspan>
+      <tspan fill="#8b949e" dx="6">high divergence — both perspectives captured</tspan>
+    </text>
+
+    <!-- Separator -->
+    <text x="20" y="218" fill="#30363d">──────────────────────────────────────────────────────────────</text>
+
+    <!-- Answer header -->
+    <text x="20" y="238" fill="#58a6ff" font-weight="bold">  ⚡ Answer</text>
+
+    <!-- Answer lines -->
+    <text x="20" y="262" fill="#e6edf3">  Both are excellent in 2026. The right choice depends on</text>
+    <text x="20" y="280" fill="#e6edf3">  your team and performance needs:</text>
+    <text x="20" y="302">
+      <tspan fill="#7c3aed" dx="10">▸</tspan>
+      <tspan fill="#a5d6ff" dx="4" font-weight="bold">Go</tspan>
+      <tspan fill="#e6edf3" dx="4">— ship fast, hire easily, run reliable services</tspan>
+    </text>
+    <text x="20" y="320">
+      <tspan fill="#0891b2" dx="10">▸</tspan>
+      <tspan fill="#a5d6ff" dx="4" font-weight="bold">Rust</tspan>
+      <tspan fill="#e6edf3" dx="4">— near-zero GC pauses, memory safety at compile time</tspan>
+    </text>
+
+    <!-- Agreements/conflicts -->
+    <text x="20" y="346" fill="#3fb950">  ✓ Both agreed: performance gap is narrowing in 2026</text>
+    <text x="20" y="364" fill="#f85149">  ✕ Diverged on: learning curve cost vs long-term payoff</text>
+
+    <!-- Bottom separator -->
+    <text x="20" y="386" fill="#30363d">──────────────────────────────────────────────────────────────</text>
+
+    <!-- Stats footer -->
+    <text x="20" y="406">
+      <tspan fill="#8b949e">  total  </tspan>
+      <tspan fill="#f0f6fc">18.4s</tspan>
+      <tspan fill="#8b949e" dx="16">agents  </tspan>
+      <tspan fill="#7c3aed">GPT-5.2</tspan>
+      <tspan fill="#8b949e"> × </tspan>
+      <tspan fill="#0891b2">Claude-4.6</tspan>
+      <tspan fill="#8b949e" dx="16">cost  </tspan>
+      <tspan fill="#f0f6fc">$0.04</tspan>
+    </text>
+
+    <!-- Next prompt -->
+    <text x="20" y="440">
+      <tspan fill="#58a6ff">❯</tspan>
+      <tspan fill="#4d5566" dx="6">_</tspan>
+    </text>
+
+  </g>
+
+  <!-- Cursor blink rect -->
+  <rect x="34" y="427" width="8" height="14" fill="#58a6ff" opacity="0.8" rx="1"/>
+</svg>

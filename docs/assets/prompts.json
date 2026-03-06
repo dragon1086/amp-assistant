@@ -1,0 +1,6 @@
+[
+  {
+    "prompt": "Clean technical architecture diagram on a dark (#0d1117) background, GitHub README style. Flow diagram showing: A box labeled 'Your Question' at the top center with a white arrow splitting into two paths. Left path goes to a box 'Agent A \u2014 GPT-5' with purple border glow. Right path goes to a box 'Agent B \u2014 Claude' with cyan border glow. Both boxes have subtitle 'independent analysis'. Below, two arrows merge into a central box 'Reconciler' with gradient border. Arrow points down to final box 'Better Answer + CSER Score' in white. All text white or light gray. Boxes have rounded corners, subtle glow effects. Professional, minimal, technical diagram aesthetic. No people.",
+    "file": "001-clean-technical-architecture-diagram-on-.png"
+  }
+]

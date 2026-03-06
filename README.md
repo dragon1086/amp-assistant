@@ -1,37 +1,36 @@
-# amp — AI Debate Engine
+<div align="center">
 
-> **Two AIs argue. You get a better answer.**
+![amp banner](docs/assets/banner.png)
 
-[![PyPI](https://img.shields.io/pypi/v/amp-reasoning)](https://pypi.org/project/amp-reasoning/)
-[![Python 3.11+](https://img.shields.io/badge/python-3.11+-blue)](https://python.org)
-[![License: MIT](https://img.shields.io/badge/License-MIT-green.svg)](LICENSE)
-[![CI](https://github.com/dragon1086/amp-assistant/actions/workflows/test.yml/badge.svg)](https://github.com/dragon1086/amp-assistant/actions)
+<h3>Two AIs argue. You get a better answer.</h3>
 
-**Read this in other languages:** [한국어](README.ko.md) · [日本語](README.ja.md) · [中文](README.zh.md) · [Español](README.es.md)
+[![PyPI version](https://img.shields.io/pypi/v/amp-reasoning?color=7c3aed&style=flat-square)](https://pypi.org/project/amp-reasoning/)
+[![Python 3.11+](https://img.shields.io/badge/python-3.11%2B-blue?style=flat-square)](https://python.org)
+[![Downloads](https://img.shields.io/pypi/dm/amp-reasoning?color=0891b2&style=flat-square)](https://pypi.org/project/amp-reasoning/)
+[![License: MIT](https://img.shields.io/badge/license-MIT-green?style=flat-square)](LICENSE)
+[![CI](https://img.shields.io/github/actions/workflow/status/dragon1086/amp-assistant/test.yml?style=flat-square&label=CI)](https://github.com/dragon1086/amp-assistant/actions)
+
+**[Quickstart](#install)** · **[How it works](#how-it-works)** · **[Configuration](#configuration)** · **[MCP Server](#mcp-server)** · **[Docs](docs/)**
+
+<br/>
+
+**Read in:** [한국어](README.ko.md) · [日本語](README.ja.md) · [中文](README.zh.md) · [Español](README.es.md)
+
+</div>
 
 ---
 
-## Why amp?
+## The problem with asking one AI
 
-A single AI has blind spots — it trained on the same data, carries the same biases, and tends to give the "safe" answer. **amp runs two independent AIs in parallel, lets them argue, and synthesizes a better answer from both perspectives.**
+A single AI has blind spots. It was trained on the same data, carries the same biases, and optimizes for the response most likely to satisfy you — not the most accurate one.
 
-```
-Your question
-       │
-       ├──────────────────────────────────────┐
-       ▼                                      ▼
-  Agent A (GPT-5)                      Agent B (Claude)
-  [independent analysis]               [independent analysis]
-       │                                      │
-       └──────────────┬───────────────────────┘
-                      ▼
-                 Reconciler
-                      │
-                      ▼
-         Final Answer  +  CSER score
-```
+**amp fixes this by running two independent AI agents in parallel, making them debate, and synthesizing the best answer from both.**
 
-**CSER** (Cross-agent Semantic Entropy Ratio) measures how differently the two AIs thought about your question. Higher CSER → more independent perspectives → better synthesis.
+<div align="center">
+
+![architecture diagram](docs/assets/architecture.png)
+
+</div>
 
 ---
 
@@ -39,152 +38,147 @@ Your question
 
 ```bash
 pip install amp-reasoning
-amp init        # interactive setup (~1 min)
 ```
 
-**Free with OAuth** (no API keys needed — requires ChatGPT Plus + Claude Max subscriptions):
+**Option 1 — API keys** (fastest, <20s responses):
 ```bash
-amp login       # authenticates both providers via browser OAuth
+export OPENAI_API_KEY="sk-..."
+export ANTHROPIC_API_KEY="sk-ant-..."
+amp init
 ```
 
-**One-line installer:**
+**Option 2 — Free with OAuth** (requires ChatGPT Plus + Claude Max subscriptions):
+```bash
+amp login    # browser OAuth, no API keys needed, cost = $0
+```
+
+**Option 3 — One-line installer:**
 ```bash
 curl -fsSL https://raw.githubusercontent.com/dragon1086/amp-assistant/main/install.sh | bash
 ```
 
 ---
 
-## Quick Start
+## Demo
 
-```bash
-# Ask anything
-amp "Should I buy Bitcoin right now?"
-amp "React vs Vue in 2026 — which should I pick for a new project?"
-amp "What are the real trade-offs between Rust and Go?"
+<div align="center">
 
-# Deep 4-round debate (takes longer, goes deeper)
-amp --mode emergent "Will AGI arrive before 2028?"
+![amp terminal demo](docs/assets/demo.svg)
 
-# Start MCP server (for Claude Desktop, Cursor, OpenClaw, etc.)
-amp serve
-```
+</div>
 
 ---
 
 ## How It Works
 
-### Default mode — 2-round independent analysis
-Agent A and Agent B analyze your question **without seeing each other's answers**.
-This guarantees genuine independence → high CSER → better synthesis.
+amp uses a **Cross-agent Semantic Entropy Ratio (CSER)** to measure how differently two AIs approach the same question. The more independent their reasoning, the better the synthesis.
 
-### Emergent mode — 4-round structured debate
+### Default — 2-round parallel analysis
+
 ```
-Round 1:  Agent A analyzes
-Round 2:  Agent B challenges A's reasoning
-Round 3:  Agent A rebuts B's challenge
-Round 4:  Agent B delivers final counterpoint
-              └──► Reconciler synthesizes
+Question ──┬──► Agent A (GPT-5)     ──► independent analysis
+           └──► Agent B (Claude)    ──► independent analysis
+                      │
+                      ▼
+               Reconciler synthesizes
+                      │
+                      ▼
+          Answer + CSER score + agreements + conflicts
 ```
 
-### CSER Gate
-If both AIs agree too strongly (CSER < 0.30), amp automatically escalates to 4-round debate
-to force more diverse perspectives before synthesizing.
+Agent A and B run **in parallel** and never see each other's work. This guarantees genuine independence and maximizes CSER.
+
+### Emergent — 4-round structured debate
+
+When you need to go deeper (or when CSER < 0.30, triggering the auto-upgrade):
+
+```
+Round 1 ── Agent A analyzes
+Round 2 ── Agent B challenges A's reasoning
+Round 3 ── Agent A rebuts B's challenge
+Round 4 ── Agent B delivers final counterpoint
+                    │
+                    ▼
+           Reconciler synthesizes all rounds
+```
 
 ### Knowledge Graph
-amp maintains a local knowledge graph (`~/.amp/kg.db`) that accumulates context across
-sessions. Over time, amp gets better at your specific domain.
+
+amp builds a local knowledge graph (`~/.amp/kg.db`) from every query. Over time, it accumulates context about your domain and improves synthesis quality.
 
 ---
 
 ## Configuration
 
 ```bash
-amp init   # interactive wizard
-amp setup  # full settings (models, Telegram bot, plugins)
+amp init    # interactive setup wizard
 ```
 
-Or edit `~/.amp/config.yaml` directly:
+`~/.amp/config.yaml`:
 
 ```yaml
 agents:
   agent_a:
     provider: openai
-    model: gpt-5.2             # gpt-5.2 | gpt-5.4 | gpt-5.4-mini
-    reasoning_effort: high     # none | low | medium | high | xhigh
+    model: gpt-5.2              # gpt-5.2 · gpt-5.4 · gpt-5.4-mini
+    reasoning_effort: high      # none · low · medium · high · xhigh
 
   agent_b:
-    provider: anthropic        # fastest with ANTHROPIC_API_KEY
-    # provider: anthropic_oauth  # free via Claude OAuth (slower)
-    model: claude-sonnet-4-6   # claude-opus-4-6 | claude-haiku-4-6
+    provider: anthropic         # or: anthropic_oauth (free, slower)
+    model: claude-sonnet-4-6    # claude-opus-4-6 · claude-haiku-4-6
 
 amp:
-  parallel: true      # run Agent A+B in parallel (default: true, ~50% faster)
-  timeout: 90         # per-agent timeout in seconds
+  parallel: true        # run A+B in parallel (default: true, ~50% faster)
+  timeout: 90           # per-agent timeout in seconds
   kg_path: ~/.amp/kg.db
 ```
 
-### Provider Options
+### Supported Providers
 
-| Provider | Speed | Cost | Requirement |
-|----------|-------|------|-------------|
-| `openai` | ⚡⚡⚡ | Paid | `OPENAI_API_KEY` |
-| `openai_oauth` | ⚡⚡⚡ | **Free** | ChatGPT Plus/Pro + `amp login` |
-| `anthropic` | ⚡⚡⚡ | Paid | `ANTHROPIC_API_KEY` |
-| `anthropic_oauth` | ⚡⚡ | **Free** | Claude Max/Pro + `amp login` |
-| `gemini` | ⚡⚡⚡ | Paid | `GEMINI_API_KEY` |
-| `deepseek` | ⚡⚡⚡ | Cheap | `DEEPSEEK_API_KEY` |
-| `mistral` | ⚡⚡⚡ | Cheap | `MISTRAL_API_KEY` |
-| `xai` | ⚡⚡⚡ | Paid | `XAI_API_KEY` |
+| Provider | Speed | Cost | Setup |
+|----------|:-----:|------|-------|
+| `openai` | ⚡⚡⚡ | ~$0.03–0.08/q | `OPENAI_API_KEY` |
+| `openai_oauth` | ⚡⚡⚡ | **Free** | ChatGPT Plus + `amp login` |
+| `anthropic` | ⚡⚡⚡ | ~$0.03–0.08/q | `ANTHROPIC_API_KEY` |
+| `anthropic_oauth` | ⚡⚡ | **Free** | Claude Max + `amp login` |
+| `gemini` | ⚡⚡⚡ | ~$0.01–0.04/q | `GEMINI_API_KEY` |
+| `deepseek` | ⚡⚡⚡ | ~$0.001/q | `DEEPSEEK_API_KEY` |
+| `mistral` | ⚡⚡⚡ | ~$0.002/q | `MISTRAL_API_KEY` |
+| `xai` | ⚡⚡⚡ | ~$0.02/q | `XAI_API_KEY` |
 | `local` | ⚡⚡ | Free | Ollama running |
 
-**Completely free setup (with ChatGPT Plus + Claude Max):**
-```bash
-amp login
-# → Automatically configures openai_oauth × anthropic_oauth
-# → $0 API cost
-```
+> **Tip:** Mix providers from different vendors for maximum diversity.
+> `openai` × `anthropic` gives the highest CSER in practice.
 
 ---
 
 ## MCP Server
 
-Works with Claude Desktop, Cursor, OpenClaw, and any MCP-compatible client:
+Works with **Claude Desktop**, **Cursor**, **Windsurf**, **OpenClaw**, and any
+[MCP-compatible](https://modelcontextprotocol.io) client.
 
 ```bash
 amp serve   # starts at http://127.0.0.1:3010
 ```
 
-Add to your MCP config:
+Add to your MCP config (`claude_desktop_config.json` or similar):
 ```json
 {
-  "amp": {
-    "url": "http://127.0.0.1:3010"
+  "mcpServers": {
+    "amp": {
+      "url": "http://127.0.0.1:3010"
+    }
   }
 }
 ```
 
 Available tools:
-| Tool | Description | Typical latency |
-|------|-------------|-----------------|
-| `analyze` | 2-round independent analysis | 15–30s |
+
+| Tool | What it does | Typical time |
+|------|-------------|:------------:|
+| `analyze` | 2-round parallel analysis | 15–30s |
 | `debate` | 4-round structured debate | 30–60s |
-| `quick_answer` | single-LLM fast answer | ~3s |
-
----
-
-## Docker
-
-```bash
-# Run the MCP server
-docker run \
-  -e OPENAI_API_KEY=sk-... \
-  -e ANTHROPIC_API_KEY=sk-ant-... \
-  -p 3010:3010 \
-  ghcr.io/dragon1086/amp-assistant
-
-# Or with docker-compose
-OPENAI_API_KEY=sk-... ANTHROPIC_API_KEY=sk-ant-... docker-compose up
-```
+| `quick_answer` | single-model fast answer | ~3s |
 
 ---
 
@@ -201,37 +195,50 @@ result = emergent.run(
     config=config,
 )
 
-print(result["answer"])
-print(f"CSER:       {result['cser']:.2f}")        # how different the two AIs were
-print(f"Agreements: {result['agreements']}")       # what both AIs agreed on
-print(f"Conflicts:  {result['conflicts']}")        # where they disagreed
+print(result["answer"])           # synthesized final answer
+print(f"CSER: {result['cser']:.2f}")          # 0–1, how different the AIs were
+print(f"Agreements: {result['agreements']}")  # what both AIs agreed on
+print(f"Conflicts:  {result['conflicts']}")   # where they disagreed
+```
+
+---
+
+## Docker
+
+```bash
+# MCP server in Docker
+docker run \
+  -e OPENAI_API_KEY=sk-... \
+  -e ANTHROPIC_API_KEY=sk-ant-... \
+  -p 3010:3010 \
+  ghcr.io/dragon1086/amp-assistant
+
+# docker-compose
+OPENAI_API_KEY=sk-... ANTHROPIC_API_KEY=sk-ant-... docker-compose up
 ```
 
 ---
 
 ## Performance
 
-Benchmarks on Apple M-series (2026-03, parallel mode):
+Benchmarks on Apple M-series, 2026-03, parallel mode:
 
-| Setup | Avg latency | Cost/query |
-|-------|-------------|------------|
-| GPT-5.2 + Claude Sonnet (API, parallel) | ~18s | $0.03–0.08 |
-| GPT-5.2 + Claude OAuth (parallel) | ~35s | ~$0.01 |
-| GPT-5.2 + GPT-5.2 (same vendor) | ~15s | $0.02–0.05 |
+| Setup | p50 latency | p95 latency | Cost/query |
+|-------|:-----------:|:-----------:|:----------:|
+| GPT-5.2 × Claude Sonnet (API) | 18s | 28s | $0.03–0.08 |
+| GPT-5.2 × Claude OAuth | 32s | 48s | ~$0.01 |
+| GPT-5.2 × DeepSeek V3 | 15s | 22s | ~$0.005 |
+| GPT-5.2 × GPT-5.2 (same vendor) | 15s | 20s | $0.02–0.05 |
 
-Parallel A+B execution gives **~50% speedup** vs sequential (v0.1.0+).
+Parallel A+B execution delivers **~50% speedup** vs sequential (v0.1.0+).
 
 ---
 
-## Why Cross-Vendor?
+## Why cross-vendor synthesis works
 
-GPT and Claude were trained by different companies, on different data, with different
-alignment approaches. They genuinely disagree more often than two instances of the same model.
-That's the core insight behind amp — **cross-vendor synthesis produces better answers than
-single-vendor, even with self-debate prompting**.
+GPT and Claude were trained by different organizations, on different corpora, with different alignment techniques. They disagree more often — and more meaningfully — than two instances of the same model.
 
-Same-vendor pairs (GPT+GPT) also work — amp automatically pushes their personas to
-opposite extremes to maximize diversity.
+Same-vendor pairs (e.g., GPT+GPT) also work: amp automatically assigns extreme opposite personas to each agent to maximize diversity. But cross-vendor naturally produces higher CSER.
 
 ---
 
@@ -244,7 +251,7 @@ pip install -e ".[dev]"
 pytest tests/ -q
 ```
 
-PRs welcome. Please open an issue first for larger changes.
+Open an issue before large PRs. All contributions welcome.
 
 ---
 
