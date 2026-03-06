@@ -73,9 +73,9 @@ dev = [
 amp = "amp.interfaces.cli:cli"
 
 [project.urls]
-Homepage = "https://github.com/amp-assistant/amp"
-Repository = "https://github.com/amp-assistant/amp"
-Issues = "https://github.com/amp-assistant/amp/issues"
+Homepage = "https://github.com/dragon1086/amp"
+Repository = "https://github.com/dragon1086/amp"
+Issues = "https://github.com/dragon1086/amp/issues"
 
 [tool.hatch.build.targets.wheel]
 packages = ["amp"]
