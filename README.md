@@ -10,7 +10,7 @@
 [![License: MIT](https://img.shields.io/badge/license-MIT-green?style=flat-square)](LICENSE)
 [![CI](https://img.shields.io/github/actions/workflow/status/dragon1086/amp-assistant/test.yml?style=flat-square&label=CI)](https://github.com/dragon1086/amp-assistant/actions)
 
-**[Why amp?](#why-amp-not-just-two-api-calls)** · **[Install](#install)** · **[How it works](#how-it-works)** · **[Benchmark](#benchmark)** · **[Config](#configuration)**
+**[Why amp?](#why-amp-not-just-two-api-calls)** · **[Install](#install)** · **[How it works](#how-it-works)** · **[Benchmark](#benchmark)** · **[Prior Art](#prior-art--differentiation)** · **[Config](#configuration)**
 
 <br/>
 
@@ -141,6 +141,63 @@ Blind A/B evaluation: amp ON vs single GPT-5.2. Gemini used as judge with random
 | **Overall (N=30)** | **13** | **17** | **43%** |
 
 **Honest interpretation:** amp is not universally better. It outperforms significantly on open-ended, multi-perspective problems (strategy, resource allocation). For factual career and relationship advice, a single expert model is often sufficient. Use `amp quick` when you want a fast expert answer. Use `amp` when the question genuinely has multiple valid framings.
+
+---
+
+## Prior Art & Differentiation
+
+amp is not the first project to pit LLMs against each other. Here's how it compares to the most relevant prior work:
+
+### The Landscape
+
+| Project | Venue | Purpose | pip installable | KG memory | CSER metric | Agent isolation | Persona engine | MCP |
+|---------|-------|---------|:-:|:-:|:-:|:-:|:-:|:-:|
+| **amp** | open-source | Advisory reasoning on life decisions | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ |
+| [llm_multiagent_debate](https://github.com/composable-models/llm_multiagent_debate) | ICML 2024 | Math / MMLU factuality | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ |
+| [DebateLLM](https://github.com/instadeepai/DebateLLM) | InstaDeep 2024 | Medical Q&A benchmarks | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ |
+| [ECON](https://github.com/tmlr-group/ECON) | ICML 2025 | Bayesian Nash coordination | ❌ | ❌ | ❌ | partial | ❌ | ❌ |
+| [Multi-Agents-Debate](https://github.com/Skytliang/Multi-Agents-Debate) | 2023 | Translation / counterfactual AR | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ |
+| [AutoGen](https://github.com/microsoft/autogen) | Microsoft | Agentic task automation | ✅ | ❌ | ❌ | ❌ | ❌ | ❌ |
+| [CrewAI](https://crewai.com) | commercial | Enterprise workflow agents | ✅ | ❌ | ❌ | ❌ | role-based | ❌ |
+| [CAMEL](https://github.com/camel-ai/camel) | 2023 | Role-playing task solving | ✅ | partial | ❌ | ❌ | manual | ❌ |
+| [LangGraph reflection](https://github.com/langchain-ai/langgraph-reflection) | LangChain | Single-model self-critique | ✅ | ❌ | ❌ | ❌ | ❌ | ❌ |
+
+### Key Conceptual Differences
+
+**vs Academic MAD papers (Du et al. ICML 2024, DebateLLM, ECON)**
+
+Academic multi-agent debate was designed to improve *factual accuracy* on closed-domain benchmarks: MMLU, GSM8K, MedQA. These tasks have ground truth. amp targets *open-ended advisory quality* — questions where there is no single correct answer, only better or worse framings.
+
+Beyond scope, the mechanics differ:
+- Academic MAD agents **see each other's outputs** during debate rounds → anchoring bias is inherent to the design
+- amp enforces strict agent isolation in 2-round mode — isolation is an architectural invariant, not a prompt instruction
+- ECON's Bayesian Nash Equilibrium is theoretically elegant but implicit — amp's CSER gives you a *measurable number* for how much emergence actually occurred
+
+**vs Task Automation Frameworks (AutoGen, CrewAI, CAMEL)**
+
+AutoGen, CrewAI, and CAMEL are designed to *complete tasks* through agent collaboration: write code, browse the web, draft emails. They measure success by task completion.
+
+amp measures something different: *quality of synthesis on questions with legitimate disagreement*. There's no task to complete — only insight to surface. This is why amp has:
+- A quality gate (CSER threshold) that can trigger more rounds
+- A KG that accumulates domain-specific reasoning history
+- Same-vendor detection (irrelevant for task agents; critical for reasoning diversity)
+
+**vs LangGraph reflection (single-model self-critique)**
+
+Reflection and self-critique — one model reviewing its own output — is a valid technique for catching obvious errors. But one model reviewing itself is bounded by its own priors: the same training data, the same RLHF alignment, the same blind spots.
+
+amp's structural bet is that *cross-vendor divergence* (GPT trained by OpenAI vs Claude trained by Anthropic, with different data, methods, and values) surfaces genuinely different framings — not just reworded versions of the same framing.
+
+### What amp Doesn't Do Well
+
+No honest comparison omits this:
+
+- **Factual Q&A** → use a single model; debate doesn't help when there's a right answer
+- **Code generation** → AutoGen / CrewAI / Claude Code are purpose-built for this
+- **Speed-critical use cases** → parallel execution helps, but 2-agent synthesis is 2× the token cost
+- **Career / relationship advice (from benchmarks above)** → single expert models often match or beat amp here
+
+amp is purpose-built for: *strategy, resource allocation, ethics, multi-stakeholder decisions, and any question where a smart person could reasonably disagree.*
 
 ---
 
