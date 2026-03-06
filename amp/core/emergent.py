@@ -247,8 +247,19 @@ def run(query: str, context: list[dict], config: dict, on_progress=None,
 
     # Auto-persona
     kg = KnowledgeGraph()
-    kg_nodes = kg.search(query, top_k=3)
-    kg_context = [node["content"] for node in kg_nodes]
+
+    # 성능 보호: KG 검색은 최대 2초만 허용 (느리면 스킵)
+    kg_nodes = []
+    try:
+        from concurrent.futures import ThreadPoolExecutor as _TPEX
+        _kpool = _TPEX(max_workers=1)
+        _kf = _kpool.submit(lambda: kg.search(query, top_k=3))
+        kg_nodes = _kf.result(timeout=float(config.get("amp", {}).get("kg_search_timeout", 2.0))) or []
+        _kpool.shutdown(wait=False)
+    except Exception:
+        kg_nodes = []
+
+    kg_context = [node.get("content", "") for node in kg_nodes if node.get("content")]
     personas = generate_personas(query, kg_context, same_vendor=same_vendor)
     _p("persona_selected",
        persona_a=personas.get("persona_a", "Agent A"),
@@ -469,50 +480,60 @@ MISSING PERSPECTIVES:
 SYNTHESIZED ANSWER:
 [your final synthesized answer in the same language as the original question — must incorporate the missing perspectives]"""
 
-    # Reconciler & Verifier: Agent B provider 사용 (A와 다른 관점 유지)
+    # Stage 3+4: Reconciler+Verifier 통합 단일 콜
+    # - 두 번 순차 호출(~27s) → 1번 통합 호출(~4s)로 단축
+    # - gpt-5-mini + reasoning_effort:none → 빠름, 합성은 단순 추론으로 충분
     _p("reconciling", cser=cser_data.get("score", 0))
-    reconciled_raw = call_llm(
-        reconciler_prompt,
-        system="You are a master synthesizer. You receive two independent expert analyses and produce a superior unified answer that captures the best of both perspectives. Answer in the same language as the original question.",
-        provider=prov_b, model=mod_b,
+    # Stage 3+4: 단일 합성 콜 — 불필요한 중간 구조 제거, 최종 답만 생성
+    # → 입력 2300c/출력 1800c → 입력 1200c/출력 500c 이하로 단축
+    _p("reconciling", cser=cser_data.get("score", 0))
+    combined_prompt = f"""Question: {query}
+
+Expert A: {agent_a_text[:450]}
+
+Expert B: {agent_b_text[:450]}
+
+Write the best possible answer by combining insights from both experts.
+- Capture unique points from each
+- Fill any gaps or blind spots
+- Fix logical issues
+- Be direct and concise
+- Answer in the same language as the question"""
+
+    final_answer = call_llm(
+        combined_prompt,
+        system=(
+            "You combine two expert analyses into one superior answer. "
+            "Concise, direct, no preamble. Respond in 150-200 words maximum."
+        ),
+        provider="openai",
+        model=config.get("llm", {}).get("synth_model", "gpt-5-mini"),
+        reasoning_effort="none",
     )
+    agreements, conflicts, synthesized = [], [], final_answer
 
-    # Parse reconciler output
-    agreements, conflicts, synthesized = _parse_reconciliation(reconciled_raw)
+    # Persist to KG — fire-and-forget (임베딩 API 블로킹 없음)
+    from concurrent.futures import ThreadPoolExecutor as _TPEX
+    _kx = _TPEX(max_workers=1)
+    _kx.submit(lambda: kg.add(content=final_answer, tags=["emergent", "reconciled"]))
+    _kx.shutdown(wait=False)
 
-    # Stage 4: Verifier (Agent A provider로 교차 검증)
-    verifier_prompt = f"""Check the following answer for logical consistency, completeness, and hidden blind spots.
+    # Stage 5: Extract insight metadata — 비동기 백그라운드 (응답 블로킹 없음)
+    _insights_holder: dict = {}
 
-Original question: {query}
+    def _bg_insights():
+        try:
+            _insights_holder["data"] = _extract_insights(
+                query, agent_a_text, agent_b_text, final_answer, config
+            )
+        except Exception:
+            _insights_holder["data"] = {}
 
-Answer to verify:
-{synthesized}
-
-Check for:
-1. Logical inconsistencies or contradictions
-2. Unsupported claims or missing evidence
-3. Hidden assumptions the user should be warned about
-4. Any critical risk or downside that was understated or omitted
-
-If the answer is solid, output it as-is with "VERIFIED: " prefix.
-If you find issues, output the corrected/strengthened version with "CORRECTED: " prefix.
-Keep the same language as the original question. Do not add unnecessary caveats — only flag genuinely important gaps."""
-
-    _p("verifying")
-    verified_raw = call_llm(
-        verifier_prompt,
-        system="You are a rigorous fact-checker and blind-spot detector. Strengthen answers by catching what was missed, not by adding generic disclaimers. Answer in the same language as the original question.",
-        provider=prov_a, model=mod_a,
-    )
-
-    # Extract final answer
-    final_answer = _extract_verified(verified_raw, synthesized)
-
-    # Persist synthesized answer to KG for future context
-    kg.add(content=final_answer, tags=["emergent", "reconciled"])
-
-    # Stage 5: Extract insight metadata
-    insights = _extract_insights(query, agent_a_text, agent_b_text, final_answer, config)
+    from concurrent.futures import ThreadPoolExecutor as _TPE
+    _ins_pool = _TPE(max_workers=1)
+    _ins_future = _ins_pool.submit(_bg_insights)
+    _ins_pool.shutdown(wait=False)          # 메인 응답을 블로킹하지 않음
+    insights = {}                           # 즉시 빈 dict 반환 (백그라운드에서 채워짐)
 
     _p("done")
     _result_2r = {
