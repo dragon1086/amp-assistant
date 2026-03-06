@@ -116,8 +116,11 @@ def _call_claude_oauth(prompt: str, system: str) -> str:
     }
     env["CLAUDE_CODE_OAUTH_TOKEN"] = oauth_token
 
+    import shutil
+    claude_bin = shutil.which("claude") or os.path.expanduser("~/.local/bin/claude")
+
     result = subprocess.run(
-        ["claude", "-p", "--dangerously-skip-permissions", full_prompt],
+        [claude_bin, "-p", "--dangerously-skip-permissions", full_prompt],
         capture_output=True,
         text=True,
         timeout=90,
