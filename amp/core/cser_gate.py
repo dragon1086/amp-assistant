@@ -15,8 +15,7 @@ import logging
 logger = logging.getLogger(__name__)
 
 CSER_GATE_THRESHOLD = 0.30
-MAX_GATE_RETRIES = 1  # 1회 재활성화: CSER < 0.30 → rounds=4 자동 심화
-                      # 타임아웃 방지: rounds=4 재시도는 1회만 허용
+MAX_GATE_RETRIES = 0  # 성능 우선: 자동 4-round 재시도 비활성화 (모바일/실사용 기본)
 
 
 def should_retry(cser: float, current_rounds: int, retry_count: int) -> tuple[bool, int, str]:

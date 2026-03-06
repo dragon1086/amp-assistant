@@ -119,7 +119,12 @@ def _call_openai(prompt: str, system: str, model: str, temperature: float | None
     # 기타 확장 옵션 (None 제외, 이미 처리된 키 제외)
     _handled = {"reasoning_effort", "thinking"}
     for k, v in kwargs.items():
-        if k not in _handled and v is not None:
+        if k in _handled or v is None:
+            continue
+        # gpt-5.x / o-series: max_tokens → max_completion_tokens 자동 변환
+        if k == "max_tokens" and _is_reasoning:
+            req["max_completion_tokens"] = v
+        else:
             req[k] = v
 
     resp = client.chat.completions.create(**req)
@@ -342,6 +347,7 @@ def _call_claude_oauth(prompt: str, system: str, model: str | None = None) -> st
     if model:
         cmd += ["--model", model]
     if cached_session_id:
+        # --resume: 동일 session 재사용 → KV 캐시 활용으로 2nd+ 콜 단축
         cmd += ["--resume", cached_session_id]
     cmd += [full_prompt]
 

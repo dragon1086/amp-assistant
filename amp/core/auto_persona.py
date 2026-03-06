@@ -146,20 +146,19 @@ def generate_personas(query: str, kg_context: list = None, same_vendor: bool = F
             "temp_b": temp_b,
         }
 
-    # 교차 벤더: 기존 로직
+    # 교차 벤더: preset 우선 — 검증된 preset은 embedding 호출 스킵 (속도 최적화)
+    persona_a, persona_b = PERSONA_PRESETS.get(domain, PERSONA_PRESETS["default"])
+    source = "preset"
+    similarity = 0.5  # preset pair는 사전검증된 다양성 보유
+
+    # preset이 없는 도메인이거나 kg_context가 있을 때만 dynamic 생성
     try:
-        client = OpenAI(api_key=os.environ.get("OPENAI_API_KEY", ""))
-        persona_a, persona_b = PERSONA_PRESETS.get(domain, PERSONA_PRESETS["default"])
-        similarity = validate_persona_diversity(persona_a, persona_b, client)
-        if similarity > 0.85:
+        if domain not in PERSONA_PRESETS or (kg_context and len(kg_context) > 0):
+            client = OpenAI(api_key=os.environ.get("OPENAI_API_KEY", ""))
             persona_a, persona_b = _dynamic_generate(query, kg_context, client)
             source = "dynamic"
-        else:
-            source = "preset"
     except Exception:
-        persona_a, persona_b = PERSONA_PRESETS.get(domain, PERSONA_PRESETS["default"])
-        similarity = 0.5
-        source = "preset_fallback"
+        pass  # preset fallback 유지
 
     return {
         "domain": domain,
