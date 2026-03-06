@@ -6,6 +6,13 @@
 [![Python 3.11+](https://img.shields.io/badge/python-3.11+-blue)](https://python.org)
 [![License: MIT](https://img.shields.io/badge/License-MIT-green.svg)](LICENSE)
 
+<div align="center">
+
+![banner](docs/assets/banner.png)
+
+</div>
+
+
 **其他语言版本:** [English](README.md) · [한국어](README.ko.md) · [日本語](README.ja.md) · [Español](README.es.md)
 
 ---
@@ -71,6 +78,12 @@ amp serve
 ---
 
 ## 工作原理
+
+<div align="center">
+
+![architecture](docs/assets/architecture.png)
+
+</div>
 
 ### 默认模式 — 2轮独立分析
 Agent A 和 B **在不知道对方答案的情况下**独立分析。

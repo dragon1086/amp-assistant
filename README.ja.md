@@ -6,6 +6,13 @@
 [![Python 3.11+](https://img.shields.io/badge/python-3.11+-blue)](https://python.org)
 [![License: MIT](https://img.shields.io/badge/License-MIT-green.svg)](LICENSE)
 
+<div align="center">
+
+![banner](docs/assets/banner.png)
+
+</div>
+
+
 **他の言語で読む:** [English](README.md) · [한국어](README.ko.md) · [中文](README.zh.md) · [Español](README.es.md)
 
 ---
@@ -71,6 +78,12 @@ amp serve
 ---
 
 ## 仕組み
+
+<div align="center">
+
+![architecture](docs/assets/architecture.png)
+
+</div>
 
 ### デフォルトモード — 2ラウンド独立分析
 Agent AとBが**お互いの答えを見ずに**独立して分析します。

@@ -6,6 +6,13 @@
 [![Python 3.11+](https://img.shields.io/badge/python-3.11+-blue)](https://python.org)
 [![License: MIT](https://img.shields.io/badge/License-MIT-green.svg)](LICENSE)
 
+<div align="center">
+
+![banner](docs/assets/banner.png)
+
+</div>
+
+
 **Leer en otros idiomas:** [English](README.md) · [한국어](README.ko.md) · [日本語](README.ja.md) · [中文](README.zh.md)
 
 ---
@@ -71,6 +78,12 @@ amp serve
 ---
 
 ## Cómo Funciona
+
+<div align="center">
+
+![architecture](docs/assets/architecture.png)
+
+</div>
 
 ### Modo predeterminado — análisis independiente de 2 rondas
 El Agente A y B analizan tu pregunta **sin ver la respuesta del otro**.
