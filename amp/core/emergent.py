@@ -509,7 +509,14 @@ Write the best possible answer by combining insights from both experts.
         provider="openai",
         model=config.get("llm", {}).get("synth_model", "gpt-5-mini"),
         reasoning_effort="none",
+        max_tokens=1500,  # max_completion_tokens로 자동 변환됨 (llm_factory 처리)
     )
+    # 빈 응답 폴백: reasoning 모델이 토큰 부족으로 빈 응답 반환 시
+    if not final_answer or not final_answer.strip():
+        final_answer = (
+            f"[Agent A 분석]\n{agent_a_text[:600]}\n\n"
+            f"[Agent B 분석]\n{agent_b_text[:600]}"
+        )
     agreements, conflicts, synthesized = [], [], final_answer
 
     # Persist to KG — fire-and-forget (임베딩 API 블로킹 없음)

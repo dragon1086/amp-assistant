@@ -127,8 +127,15 @@ def _call_openai(prompt: str, system: str, model: str, temperature: float | None
         else:
             req[k] = v
 
+    # gpt-5.x / o-series: max_completion_tokens 미설정 시 기본값 보장
+    # (reasoning 토큰이 예산을 잠식해 output이 빈 문자열이 되는 버그 방지)
+    if _is_reasoning and "max_completion_tokens" not in req:
+        req["max_completion_tokens"] = 2000
+
     resp = client.chat.completions.create(**req)
-    return resp.choices[0].message.content
+    # o-series: finish_reason="length" 또는 content=None 시 방어적 처리
+    content = resp.choices[0].message.content
+    return content if content is not None else ""
 
 
 # ── OpenAI OAuth (Codex CLI 토큰, 무료) ──────────────────────────
