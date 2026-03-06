@@ -266,11 +266,32 @@ def run(query: str, context: list[dict], config: dict, on_progress=None,
     temp_b = personas.get("temp_b")   # 1.1 (창의) 또는 None
 
     # 시스템 프롬프트 — 같은 벤더는 역할 제약 더 강하게
+    # 도메인별 심화 지시
+    domain = personas.get("domain", "general")
+    _domain_hint_a = {
+        "strategy":     "수치·근거 기반으로 구체적 실행 단계를 제시하세요.",
+        "resource_allocation": "기회비용과 트레이드오프를 반드시 정량화하세요.",
+        "ethics":       "가치 충돌 구조를 명시하고, 각 가치의 우선순위 근거를 제시하세요.",
+        "career":       "장기 커리어 경로와 단기 리스크를 분리해서 분석하세요.",
+        "relationship": "감정·논리·사회적 맥락을 각각 구분해서 분석하세요.",
+        "emotion":      "인지적 편향 가능성을 먼저 진단한 뒤 전략을 제시하세요.",
+    }.get(domain, "핵심 근거를 3가지 이내로 압축해서 제시하세요.")
+
+    _domain_hint_b = {
+        "strategy":     "주류 전략 교과서가 틀릴 수 있는 시나리오를 반드시 포함하세요.",
+        "resource_allocation": "일반적 '분산 투자' 조언을 반복하면 실패입니다. 집중 전략의 케이스를 제시하세요.",
+        "ethics":       "다수가 동의할 것 같은 결론을 의도적으로 피하세요. 소수 관점·이해충돌 구조를 드러내세요.",
+        "career":       "'안정성'과 '성장'의 상충을 기본값으로 가정하지 마세요. 제3의 경로를 찾으세요.",
+        "relationship": "상대방의 감정을 대변하는 관점에서 분석하세요.",
+        "emotion":      "감정의 정보적 가치(신호로서의 감정)를 중심으로 분석하세요.",
+    }.get(domain, "상대방이 말할 법한 '예상 가능한' 결론을 의도적으로 피하고 비선형적 관점을 제시하세요.")
+
     if same_vendor:
         agent_a_system = (
             f"당신은 {personas['persona_a']}입니다.\n"
             "규칙: 반드시 데이터, 수치, 증거에만 근거하세요. "
             "직관이나 감성적 표현을 배제하고 측정 가능한 결론만 제시하세요. "
+            f"{_domain_hint_a} "
             "Answer in the same language as the user's question."
             + kg_context_str
         )
@@ -279,6 +300,7 @@ def run(query: str, context: list[dict], config: dict, on_progress=None,
             "규칙: 통념에 정면으로 도전하세요. "
             "Agent A가 말할 법한 '안전한' 결론을 피하고, "
             "비선형적·파괴적·소수 의견 관점에서 분석하세요. "
+            f"{_domain_hint_b} "
             "상식적인 조언을 반복하면 실패입니다. "
             "Answer in the same language as the user's question."
             + kg_context_str
@@ -286,11 +308,13 @@ def run(query: str, context: list[dict], config: dict, on_progress=None,
     else:
         agent_a_system = (
             f"당신은 {personas['persona_a']}입니다. 독립적으로 분석하세요. "
+            f"{_domain_hint_a} "
             "Answer in the same language as the user's question."
             + kg_context_str
         )
         agent_b_system = (
             f"당신은 {personas['persona_b']}입니다. 독립적으로 분석하세요. "
+            f"{_domain_hint_b} "
             "Answer in the same language as the user's question."
             + kg_context_str
         )
@@ -409,7 +433,8 @@ Original question: {query}
 Your task:
 1. Identify points where both agents AGREE (list as agreements)
 2. Identify points where they DISAGREE or have different perspectives (list as conflicts)
-3. Synthesize a final, balanced answer that captures the best insights from both
+3. Identify important perspectives that NEITHER agent covered (missing angles, blind spots, unstated assumptions)
+4. Synthesize a final answer that captures the best insights from both AND fills in the missing perspectives
 
 Format your response as:
 AGREEMENTS:
@@ -418,8 +443,11 @@ AGREEMENTS:
 CONFLICTS:
 - [conflict points]
 
+MISSING PERSPECTIVES:
+- [important angles, risks, or context that both agents overlooked]
+
 SYNTHESIZED ANSWER:
-[your final synthesized answer in the same language as the original question]"""
+[your final synthesized answer in the same language as the original question — must incorporate the missing perspectives]"""
 
     # Reconciler & Verifier: Agent B provider 사용 (A와 다른 관점 유지)
     _p("reconciling", cser=cser_data.get("score", 0))
@@ -433,21 +461,27 @@ SYNTHESIZED ANSWER:
     agreements, conflicts, synthesized = _parse_reconciliation(reconciled_raw)
 
     # Stage 4: Verifier (Agent A provider로 교차 검증)
-    verifier_prompt = f"""Check the following answer for logical consistency, completeness, and accuracy.
+    verifier_prompt = f"""Check the following answer for logical consistency, completeness, and hidden blind spots.
 
 Original question: {query}
 
 Answer to verify:
 {synthesized}
 
-If the answer is logically consistent and complete, output it as-is with "VERIFIED: " prefix.
-If you find issues, output the corrected version with "CORRECTED: " prefix.
-Answer in the same language as the original question."""
+Check for:
+1. Logical inconsistencies or contradictions
+2. Unsupported claims or missing evidence
+3. Hidden assumptions the user should be warned about
+4. Any critical risk or downside that was understated or omitted
+
+If the answer is solid, output it as-is with "VERIFIED: " prefix.
+If you find issues, output the corrected/strengthened version with "CORRECTED: " prefix.
+Keep the same language as the original question. Do not add unnecessary caveats — only flag genuinely important gaps."""
 
     _p("verifying")
     verified_raw = call_llm(
         verifier_prompt,
-        system="You are a logical consistency checker. Verify answers for correctness. Answer in the same language as the original question.",
+        system="You are a rigorous fact-checker and blind-spot detector. Strengthen answers by catching what was missed, not by adding generic disclaimers. Answer in the same language as the original question.",
         provider=prov_a, model=mod_a,
     )
 
@@ -489,9 +523,12 @@ Answer in the same language as the original question."""
 
 
 def _parse_reconciliation(text: str) -> tuple[list[str], list[str], str]:
-    """Parse reconciler output into agreements, conflicts, and synthesized answer."""
+    """Parse reconciler output into agreements, conflicts, and synthesized answer.
+    Also captures MISSING PERSPECTIVES and prepends them to conflicts list.
+    """
     agreements = []
     conflicts = []
+    missing = []
     synthesized = text  # fallback
 
     lines = text.split("\n")
@@ -505,6 +542,8 @@ def _parse_reconciliation(text: str) -> tuple[list[str], list[str], str]:
             current_section = "agreements"
         elif "CONFLICTS:" in upper or "CONFLICT:" in upper:
             current_section = "conflicts"
+        elif "MISSING PERSPECTIVES:" in upper or "MISSING:" in upper or "BLIND SPOT" in upper:
+            current_section = "missing"
         elif "SYNTHESIZED ANSWER:" in upper or "FINAL ANSWER:" in upper or "SYNTHESIS:" in upper:
             current_section = "synthesis"
             synthesized = ""
@@ -516,15 +555,19 @@ def _parse_reconciliation(text: str) -> tuple[list[str], list[str], str]:
             item = stripped.lstrip("- ").strip()
             if item:
                 conflicts.append(item)
+        elif current_section == "missing" and stripped.startswith("-"):
+            item = stripped.lstrip("- ").strip()
+            if item:
+                missing.append(f"[누락 관점] {item}")
         elif current_section == "synthesis" and stripped:
             synthesized += line + "\n"
 
     synthesized = synthesized.strip()
     if not synthesized:
-        # Fallback: use full text
         synthesized = text
 
-    return agreements, conflicts, synthesized
+    # missing perspectives를 conflicts 뒤에 붙여서 함께 전달
+    return agreements, conflicts + missing, synthesized
 
 
 def _extract_verified(verified_raw: str, fallback: str) -> str:
