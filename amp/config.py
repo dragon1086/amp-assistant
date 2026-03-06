@@ -64,6 +64,8 @@ def load_config(config_path: Path | None = None) -> dict:
         "amp": {
             "default_mode": "auto",
             "kg_path": str(AMP_DIR / "kg.json"),
+            "timeout": 120,
+            "parallel": True,
         },
     }
 

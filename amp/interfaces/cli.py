@@ -644,7 +644,152 @@ def cli(ctx, query, mode, config_path):
         ctx.invoke(main, query=query, mode=mode, config_path=config_path)
 
 
+@click.command()
+@click.option("--non-interactive", is_flag=True, help="자동 설정 (API 키 자동 탐지)")
+def init(non_interactive):
+    """amp 초기 설정 — API 키 자동 탐지 + config 생성.
+
+    \b
+    $ amp init          # 대화형 설정
+    $ amp init --non-interactive  # 환경변수에서 자동 탐지
+    """
+    import subprocess as _sp
+
+    console.print(Panel(
+        "[bold cyan]⚡ amp init[/bold cyan]\n"
+        "[dim]Two AIs argue. You get a better answer.[/dim]",
+        border_style="cyan", expand=False,
+    ))
+
+    amp_dir = ensure_amp_dir()
+    config = load_config()
+
+    # 자동 탐지: 환경변수 또는 ~/.zshrc
+    def _detect_key(env_name: str) -> str:
+        val = os.environ.get(env_name, "")
+        if not val:
+            # ~/.zshrc 에서 찾기
+            zshrc = Path.home() / ".zshrc"
+            if zshrc.exists():
+                for line in zshrc.read_text().splitlines():
+                    if env_name in line and "=" in line:
+                        val = line.split("=", 1)[-1].strip().strip("'\"")
+                        break
+        return val
+
+    openai_key = _detect_key("OPENAI_API_KEY")
+    anthropic_key = _detect_key("ANTHROPIC_API_KEY")
+
+    if non_interactive:
+        if openai_key:
+            console.print(f"[green]✅ OPENAI_API_KEY 감지됨[/green]")
+        else:
+            console.print("[yellow]⚠️  OPENAI_API_KEY 없음 — amp ask 전에 설정 필요[/yellow]")
+        if anthropic_key:
+            console.print(f"[green]✅ ANTHROPIC_API_KEY 감지됨 (빠른 Claude API 모드 활성화)[/green]")
+        else:
+            console.print("[dim]   ANTHROPIC_API_KEY 없음 — Claude OAuth(무료) 사용[/dim]")
+    else:
+        # 대화형
+        if not openai_key:
+            openai_key = Prompt.ask("  OpenAI API 키", default="", password=True, console=console).strip()
+        else:
+            console.print(f"[green]✅ OpenAI API 키 감지됨[/green]")
+
+        if not anthropic_key:
+            ans = Prompt.ask("  Anthropic API 키 (없으면 Enter — Claude OAuth 무료 사용)", default="", password=True, console=console).strip()
+            if ans:
+                anthropic_key = ans
+        else:
+            console.print(f"[green]✅ Anthropic API 키 감지됨[/green]")
+
+    # config 저장
+    config.setdefault("agents", {}).setdefault("agent_a", {}).update({
+        "provider": "openai", "model": "gpt-5.2"
+    })
+    config.setdefault("agents", {}).setdefault("agent_b", {}).update({
+        "provider": "anthropic" if anthropic_key else "anthropic_oauth",
+        "model": "claude-sonnet-4-6",
+    })
+    config.setdefault("amp", {}).update({"parallel": True, "timeout": 90})
+    save_config(config)
+
+    # .env 저장
+    env_path = amp_dir / ".env"
+    env_lines = []
+    if openai_key:
+        env_lines.append(f"OPENAI_API_KEY={openai_key}")
+    if anthropic_key:
+        env_lines.append(f"ANTHROPIC_API_KEY={anthropic_key}")
+    if env_lines:
+        env_path.write_text("\n".join(env_lines) + "\n")
+
+    console.print(f"\n[green]✅ 설정 저장: {amp_dir}/config.yaml[/green]")
+    console.print("\n[bold]시작:[/bold]")
+    console.print('  [cyan]amp "비트코인 지금 사야 할까?"[/cyan]')
+    console.print("  [cyan]amp serve[/cyan]  # MCP 서버")
+
+
+@click.command()
+@click.option("--host", default="127.0.0.1", help="호스트 (기본: 127.0.0.1)")
+@click.option("--port", default=3010, help="포트 (기본: 3010)")
+@click.option("--reload", is_flag=True, help="개발용 hot-reload")
+def serve(host, port, reload):
+    """amp MCP 서버 시작 (Claude Desktop, Cursor, OpenClaw 등에서 사용).
+
+    \b
+    $ amp serve                     # http://127.0.0.1:3010
+    $ amp serve --host 0.0.0.0      # 외부 접근 허용
+    $ amp serve --port 8080         # 포트 변경
+    """
+    try:
+        import uvicorn
+    except ImportError:
+        console.print("[red]❌ uvicorn 미설치[/red]")
+        console.print("   [cyan]pip install 'amp-reasoning[server]'[/cyan]")
+        return
+
+    console.print(Panel(
+        f"[bold cyan]🚀 amp MCP Server[/bold cyan]\n"
+        f"[dim]http://{host}:{port}[/dim]\n\n"
+        "Claude Desktop, Cursor, OpenClaw에서 사용:\n"
+        f'[cyan]{{"url": "http://{host}:{port}"}}[/cyan]',
+        border_style="cyan", expand=False,
+    ))
+
+    uvicorn.run(
+        "amp.mcp_server:app",
+        host=host,
+        port=port,
+        log_level="info",
+        reload=reload,
+    )
+
+
+@click.command()
+@click.argument("query")
+@click.option("--config-path", default=None, help="Path to config.yaml")
+def quick(query: str, config_path: str | None):
+    """Fast emergent analysis — answer only, no verbose panels."""
+    config = load_config(Path(config_path) if config_path else None)
+    kg = KnowledgeGraph(Path(config["amp"].get("kg_path", "~/.amp/kg.json")).expanduser())
+
+    async def _run():
+        result = await _process_query(query, "emergent", [], config, kg)
+        console.print(Markdown(result["answer"]))
+        cser = result.get("cser")
+        if cser is not None:
+            a_lbl = result.get("agent_a_label", "A")
+            b_lbl = result.get("agent_b_label", "B")
+            console.print(f"\n[dim]CSER: {cser:.2f} | {a_lbl} x {b_lbl}[/dim]")
+
+    asyncio.run(_run())
+
+
 cli.add_command(setup)
+cli.add_command(init)
+cli.add_command(quick)
+cli.add_command(serve)
 cli.add_command(main, name="ask")
 cli.add_command(plugin)
 
