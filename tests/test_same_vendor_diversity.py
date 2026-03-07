@@ -148,4 +148,7 @@ if failed > 0:
             print(f"    {FAIL} {name}" + (f" — {detail}" if detail else ""))
 print("=" * 60 + "\n")
 
-sys.exit(0 if failed == 0 else 1)
+def test_same_vendor_diversity_checks():
+    """Pytest 엔트리포인트: top-level 검증 결과를 테스트로 반영."""
+    failed_items = [name for s, name, _ in results if s == FAIL]
+    assert failed == 0, f"same_vendor 다양성 검증 실패: {failed_items}"
