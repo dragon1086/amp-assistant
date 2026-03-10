@@ -6,7 +6,7 @@ Designed with cokac-bot. Three pillars: 시장성 / 시대를 앞서나감 / AGI
 도메인 감지 우선순위:
   1. 정적 키워드 매칭 (O(1), LLM 호출 없음)
   2. DomainRegistry 임베딩 유사도 (캐시 조회)
-  3. DomainRegistry 신규 창작 (gpt-5-mini 1회, DB 저장 후 재사용)
+  3. DomainRegistry 신규 창작 (gpt-5.4 1회, DB 저장 후 재사용)
 """
 
 import json
@@ -92,7 +92,7 @@ def detect_domain(query: str, use_llm_fallback: bool = True) -> str:
 
 def _llm_detect_domain(query: str) -> str:
     """
-    키워드로 감지 못한 경우 gpt-5-mini로 기존 9개 도메인 중 하나로 분류.
+    키워드로 감지 못한 경우 gpt-5.4로 기존 9개 도메인 중 하나로 분류.
     DomainRegistry가 초기화되기 전 단계 또는 레거시 경로에서 사용.
     """
     try:
@@ -138,7 +138,7 @@ def generate_personas(query: str, kg_context: list = None, same_vendor: bool = F
     도메인 감지 우선순위:
       1. 정적 키워드 매칭 (O(1), LLM 호출 없음)
       2. DomainRegistry.find()  — 임베딩 유사도 캐시 조회
-      3. DomainRegistry.create() — gpt-5-mini로 신규 도메인 창작 + 저장
+      3. DomainRegistry.create() — gpt-5.4로 신규 도메인 창작 + 저장
 
     Args:
         query:       User question

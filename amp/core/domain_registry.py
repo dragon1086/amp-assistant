@@ -5,7 +5,7 @@ amp Dynamic Domain Registry
 흐름:
   1. 키워드 매칭 (정적, O(1))           → hit: 기존 preset 사용
   2. 임베딩 유사도 탐색 (SQLite)         → hit (≥0.82): 캐시된 도메인 재사용
-  3. LLM 도메인 창작 (gpt-5-mini 1회)   → 새 도메인 생성 + 저장
+  3. LLM 도메인 창작 (gpt-5.4 1회)   → 새 도메인 생성 + 저장
      └→ 유사 도메인 병합 체크 (≥0.75)  → 중복 방지
 """
 
@@ -188,7 +188,7 @@ class DomainRegistry:
             conn.commit()
 
     def _llm_create_domain(self, query: str, client) -> dict:
-        """gpt-5-mini로 도메인명 + 페르소나 쌍 동시 생성."""
+        """gpt-5.4로 도메인명 + 페르소나 쌍 동시 생성."""
         system = (
             "You are a domain classification expert. "
             "Given a query, define a new reasoning domain. "

@@ -483,7 +483,7 @@ SYNTHESIZED ANSWER:
 
     # Stage 3+4: Reconciler+Verifier 통합 단일 콜
     # - 두 번 순차 호출(~27s) → 1번 통합 호출(~4s)로 단축
-    # - gpt-5-mini + reasoning_effort:none → 빠름, 합성은 단순 추론으로 충분
+    # - gpt-5.4 + reasoning_effort:none → 빠름, 합성은 단순 추론으로 충분
     _p("reconciling", cser=cser_data.get("score", 0))
     # Stage 3+4: 단일 합성 콜 — 불필요한 중간 구조 제거, 최종 답만 생성
     # → 입력 2300c/출력 1800c → 입력 1200c/출력 500c 이하로 단축
