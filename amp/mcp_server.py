@@ -33,7 +33,7 @@ except ImportError:
     sys.exit(1)
 
 from amp.core import emergent, solo
-from amp.config import load_config
+from amp.config import load_config, get_fast_model
 
 logger = logging.getLogger(__name__)
 app = FastAPI(title="amp MCP Server (Streamable HTTP)", version="2.0.0")
@@ -85,9 +85,9 @@ def _get_config() -> dict:
         return load_config()
     except Exception:
         return {
-            "llm": {"provider": "anthropic_oauth", "model": "gpt-5-mini"},
+            "llm": {"provider": "anthropic_oauth", "model": get_fast_model()},
             "agents": {
-                "agent_a": {"provider": "openai", "model": "gpt-5-mini"},
+                "agent_a": {"provider": "openai", "model": get_fast_model()},
                 "agent_b": {"provider": "anthropic_oauth", "model": "claude-sonnet-4-6"},
             },
             "amp": {"default_mode": "auto", "kg_path": "~/.amp/kg.db"},

@@ -57,6 +57,7 @@ def load_config(config_path: Path | None = None) -> dict:
             "provider": "openai",
             "model": "gpt-5-mini",
             "api_key": "",
+            "fast_model": "",
         },
         "telegram": {
             "token": "",
@@ -98,7 +99,19 @@ def load_config(config_path: Path | None = None) -> dict:
     if mode := os.environ.get("AMP_DEFAULT_MODE"):
         config["amp"]["default_mode"] = mode
 
+    if fast_model := os.environ.get("AMP_FAST_MODEL"):
+        config["llm"]["fast_model"] = fast_model
+
     return config
+
+
+def get_fast_model(config: dict = None) -> str:
+    """Get fast model from config > AMP_FAST_MODEL env var > default."""
+    if config:
+        val = config.get("llm", {}).get("fast_model")
+        if val:
+            return val
+    return os.environ.get("AMP_FAST_MODEL", "gpt-5.4")
 
 
 def _deep_merge(base: dict, override: dict) -> None:

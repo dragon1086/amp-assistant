@@ -16,13 +16,15 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Optional
 
+from amp.config import get_fast_model
+
 
 # ─── 유사도 임계값 ────────────────────────────────────────────────────────────
 REUSE_THRESHOLD  = 0.78   # 이 이상이면 캐시된 도메인 그대로 재사용
 MERGE_THRESHOLD  = 0.75   # 신규 도메인 생성 시, 이 이상이면 기존 도메인으로 병합
 
 EMBEDDING_MODEL  = "text-embedding-3-small"
-DOMAIN_LLM_MODEL = "gpt-5-mini"
+DOMAIN_LLM_MODEL = get_fast_model()
 
 
 @dataclass

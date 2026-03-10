@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "amp-reasoning"
-version = "0.1.1"
+version = "0.2.0"
 description = "Two AIs argue. You get a better answer. Multi-agent emergent reasoning engine."
 readme = "README.md"
 license = { text = "MIT" }

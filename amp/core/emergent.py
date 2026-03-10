@@ -21,6 +21,7 @@ Agent A & B 모두 config.yaml에서 자유롭게 설정 가능:
 import json
 from concurrent.futures import ThreadPoolExecutor, TimeoutError as FutureTimeoutError
 
+from amp.config import get_fast_model
 from amp.core.auto_persona import generate_personas
 from amp.core.kg import KnowledgeGraph
 from amp.core.llm_factory import call_llm
@@ -60,7 +61,7 @@ def _get_agent_cfg(config: dict, agent: str) -> tuple[str, str, str | None]:
     if agent == "agent_a":
         return "anthropic_oauth", "claude-sonnet-4-6", None
     else:
-        return "openai", config.get("llm", {}).get("model", "gpt-5-mini"), None
+        return "openai", config.get("llm", {}).get("model", get_fast_model(config)), None
 
 
 def _extract_insights(
@@ -339,7 +340,7 @@ def run(query: str, context: list[dict], config: dict, on_progress=None,
     )
 
     # OAuth fallback: anthropic_oauth 실패 시 openai로 자동 전환
-    fallback_model = config.get("llm", {}).get("model", "gpt-5-mini")
+    fallback_model = config.get("llm", {}).get("model", get_fast_model(config))
 
     def _call_with_fallback(prompt: str, system: str, provider: str, model: str,
                             temperature=None, reasoning_effort=None) -> tuple[str, str]:
@@ -507,7 +508,7 @@ Write the best possible answer by combining insights from both experts.
             "Concise, direct, no preamble. Respond in 150-200 words maximum."
         ),
         provider="openai",
-        model=config.get("llm", {}).get("synth_model", "gpt-5-mini"),
+        model=config.get("llm", {}).get("synth_model", get_fast_model(config)),
         reasoning_effort="none",
         max_tokens=1500,  # max_completion_tokens로 자동 변환됨 (llm_factory 처리)
     )

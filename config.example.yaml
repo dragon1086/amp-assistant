@@ -6,6 +6,8 @@ llm:
   provider: anthropic_oauth  # reconciler 기본: Claude OAuth (무료)
   openai_model: gpt-5.2      # Agent A 기본 (cross-vendor diversity 최대화)
   embedding_model: text-embedding-3-small  # OpenAI embedding (변경 불필요)
+  fast_model: gpt-5.4  # auto_persona, domain_registry, synth 등 내부 빠른 호출용
+                       # 환경변수 AMP_FAST_MODEL로도 오버라이드 가능
 
 agents:
   # ── Agent A & B 조합 가이드 ──────────────────────────────────

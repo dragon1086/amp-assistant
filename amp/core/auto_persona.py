@@ -14,6 +14,7 @@ import os
 
 from openai import OpenAI
 
+from amp.config import get_fast_model
 from amp.core.domain_registry import DomainRegistry, DomainSpec
 
 # ─── 같은 벤더 전용: 극단적 관점 대비 팩 ───────────────────────────────────
@@ -98,7 +99,7 @@ def _llm_detect_domain(query: str) -> str:
         client = OpenAI(api_key=os.environ.get("OPENAI_API_KEY", ""))
         domains = list(DOMAIN_KEYWORDS.keys()) + ["default"]
         resp = client.chat.completions.create(
-            model="gpt-5-mini",
+            model=get_fast_model(),
             messages=[
                 {"role": "system", "content": (
                     f"Classify the query into exactly one of: {', '.join(domains)}. "
@@ -238,7 +239,7 @@ Return valid JSON only: {{"persona_a": "...", "persona_b": "..."}}"""
 
     try:
         response = client.chat.completions.create(
-            model="gpt-5-mini",
+            model=get_fast_model(),
             messages=[
                 {"role": "system", "content": "Generate contrasting personas. Return valid JSON only."},
                 {"role": "user", "content": prompt},

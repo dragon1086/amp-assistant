@@ -4,6 +4,7 @@
 document creation, and step-by-step problem solving.
 """
 
+from amp.config import get_fast_model
 from amp.core.llm_factory import call_llm
 from amp.core.emergent import _get_agent_cfg
 
@@ -23,7 +24,7 @@ def run(query: str, context: list[dict], config: dict) -> dict:
     try:
         provider, model = _get_agent_cfg(config, "agent_a")
     except Exception:
-        provider, model = "openai", "gpt-5-mini"
+        provider, model = "openai", get_fast_model(config)
 
     AMP_CONTEXT = (
         "You are amp — a local AI assistant running on the user's own machine. "
